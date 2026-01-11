@@ -1,6 +1,257 @@
 ---
 title: Curve Playground
-description: 'Interactive density curve explorer'
+description: 'Interactive density curve explorer - visualize how your liquidity is distributed across price ranges'
 ---
 
+# Density Curve Playground
+
+Density curves are the mathematical heart of Braid. They define **how your liquidity is distributed across a price range**. This interactive playground lets you experiment with different curve shapes and see exactly where your capital will be deployed.
+
 <div id="curve-playground"></div>
+
+---
+
+## Understanding the Visualization
+
+### What You're Looking At
+
+The chart shows your **liquidity density** (Y-axis) across a **price range** (X-axis):
+
+| Element | Meaning |
+|---------|---------|
+| **White dashed line** (left edge) | Current spot price - where the market is now |
+| **Blue filled area** | Your liquidity distribution across the range |
+| **Gray dotted line** | Average execution price - where most of your order will fill |
+| **X-axis** | Price range from spot (left) to upper bound (right) |
+| **Y-axis** | Relative liquidity density at each price |
+
+### The Controls
+
+| Control | What It Does |
+|---------|--------------|
+| **Exponent** | Shape of the curve (-5 to +5). Controls where liquidity concentrates. |
+| **Start Price** | Lower bound of your range (% from spot to upper) |
+| **End Price** | Upper bound of your range (% from spot to upper) |
+
+---
+
+## How Exponent Shapes Your Curve
+
+The exponent is the most important parameter. It determines whether your liquidity concentrates **near the current price** or **far from it**.
+
+### Negative Exponent (e.g., -2.0)
+
+**More liquidity near spot price, less at the edges.**
+
+```
+Density
+  │
+  █████
+  ██████████
+  ███████████████
+  ████████████████████
+  ──────────────────────────► Price
+  Spot                    Upper
+```
+
+**Use cases:**
+- **Conservative DCA**: Buy more at prices close to current, less as price falls further
+- **Tight range LP**: Concentrate liquidity where most trading happens
+- **Mean reversion**: Expect price to stay near current levels
+
+### Zero Exponent (0.0)
+
+**Uniform distribution - equal liquidity at every price.**
+
+```
+Density
+  │
+  ████████████████████████
+  ████████████████████████
+  ████████████████████████
+  ████████████████████████
+  ──────────────────────────► Price
+  Spot                    Upper
+```
+
+**Use cases:**
+- **Simple limit orders**: Traditional orderbook behavior
+- **Uncertainty**: No strong view on where price will go
+- **Baseline comparison**: Default behavior to compare against
+
+### Positive Exponent (e.g., +2.0)
+
+**Less liquidity near spot, more at the edges.**
+
+```
+Density
+  │
+                    █████
+              ██████████
+        ███████████████
+  ████████████████████
+  ──────────────────────────► Price
+  Spot                    Upper
+```
+
+**Use cases:**
+- **Aggressive DCA**: Buy small amounts early, load up if price drops significantly
+- **Breakout trading**: Capture large moves while minimizing exposure to chop
+- **Tail risk**: Position for extreme scenarios
+
+---
+
+## Real-World Examples
+
+### Example 1: Graduated Buy Order
+
+*"I want to accumulate SOL, buying more aggressively as the price drops."*
+
+**Settings:**
+- Exponent: **+1.5** (more liquidity at lower prices)
+- Start Price: **0%** (start buying immediately below spot)
+- End Price: **100%** (full range to your lower bound)
+
+**Result:** You'll buy a little SOL if it dips 5%, moderate amounts at 10-15% down, and the bulk of your order fills if it drops 20%+.
+
+### Example 2: Tight Range Market Making
+
+*"I want to provide liquidity in a narrow band around the current price."*
+
+**Settings:**
+- Exponent: **-1.0** (concentrate near current price)
+- Start Price: **40%** (start 40% into your range)
+- End Price: **60%** (end 60% into your range)
+
+**Result:** Your liquidity is concentrated in the middle 20% of your total range, maximizing fee capture where most trades occur.
+
+### Example 3: Breakout Seller
+
+*"I want to sell into strength, selling more as price rises further."*
+
+**Settings:**
+- Exponent: **+2.0** (more liquidity at extreme prices)
+- Start Price: **0%** (start selling just above spot)
+- End Price: **100%** (sell through entire upper range)
+
+**Result:** Small sells on initial price increases, but if price really pumps, you're selling significant size into the euphoria.
+
+### Example 4: Traditional Limit Order
+
+*"I just want to buy at exactly $145, like a normal limit order."*
+
+**Settings:**
+- Exponent: **0** (doesn't matter for point orders)
+- Start Price: **50%** (your target price)
+- End Price: **50%** (same as start = single price point)
+
+**Result:** The curve collapses to a vertical line - all liquidity at one price, just like a traditional limit order.
+
+---
+
+## The Math Behind the Curve
+
+For the mathematically curious, density curves follow a power-law formula:
+
+```
+d(t) = k · t^(2^|n|)
+
+Where:
+  t = normalized position in range [0, 1]
+  n = exponent from the slider
+  k = normalization constant (ensures total = 1)
+```
+
+### How Exponent Transforms the Curve
+
+| Exponent | Power | Behavior |
+|----------|-------|----------|
+| -3.0 | t^8 inverted | Extremely front-loaded |
+| -2.0 | t^4 inverted | Heavily front-loaded |
+| -1.0 | t^2 inverted | Moderately front-loaded |
+| 0.0 | flat | Uniform distribution |
+| +1.0 | t^2 | Moderately back-loaded |
+| +2.0 | t^4 | Heavily back-loaded |
+| +3.0 | t^8 | Extremely back-loaded |
+
+The curve smoothly blends toward uniform (flat) as the exponent approaches zero.
+
+---
+
+## Tips for Effective Curve Design
+
+<CardGroup cols={2}>
+  <Card title="Start with Your Thesis" icon="lightbulb">
+    What's your market view? Mean reversion → negative exponent. Trend following → positive exponent. Uncertain → zero.
+  </Card>
+  <Card title="Watch the Average Line" icon="chart-line">
+    The gray dotted line shows your expected average fill price. Make sure it matches your expectations.
+  </Card>
+  <Card title="Narrower = More Concentrated" icon="compress">
+    Reducing the range (Start/End closer together) concentrates your liquidity, similar to increasing exponent magnitude.
+  </Card>
+  <Card title="Combine with Range" icon="sliders">
+    Use both exponent AND range to fine-tune. A moderate exponent with a narrow range can achieve similar results to an extreme exponent with a wide range.
+  </Card>
+</CardGroup>
+
+---
+
+## From Playground to Code
+
+Once you've found a curve shape you like, translate it to code:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+// Example: Graduated buy with positive exponent
+const ix = await market.placeLimitOrder({
+  side: 'bid',
+  pMin: 130_000_000n,    // Lower bound: $130
+  pMax: 150_000_000n,    // Upper bound: $150 (spot)
+  amount: 5000_000_000n, // 5000 USDC to deploy
+  exponent: 1.5,         // More liquidity at lower prices
+  owner: wallet,
+});
+
+// Example: Tight range LP with negative exponent
+const clmmIx = await market.placeClmmPosition({
+  pMin: 145_000_000n,    // $145
+  pMax: 155_000_000n,    // $155
+  maxBase: 10_000_000_000n,
+  maxQuote: 1_500_000_000n,
+  exponent: -1.0,        // Concentrate near middle of range
+  owner: wallet,
+});
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+// Example: Graduated buy with positive exponent
+let ix = market.place_limit_order(PlaceLimitOrderParams {
+    side: Side::Bid,
+    p_min: 130_000_000,    // $130
+    p_max: 150_000_000,    // $150
+    amount: 5_000_000_000, // 5000 USDC
+    exponent: 15,          // 1.5 (scaled by 10)
+})?;
+```
+  </Tab>
+</Tabs>
+
+<Note>
+**Exponent scaling**: In the SDK, exponents may be scaled (e.g., 1.5 → 15). Check the SDK documentation for your specific version's conventions.
+</Note>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Order Types" icon="list" href="/concepts/order-types">
+    Learn which order type (Limit, CLMM, PropAMM) is best for your strategy
+  </Card>
+  <Card title="Place Your First Order" icon="rocket" href="/quickstart">
+    Put your curve design into practice with the quickstart guide
+  </Card>
+</CardGroup>
