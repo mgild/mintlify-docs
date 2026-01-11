@@ -3,7 +3,7 @@
   "theme": "mint",
   "name": "Braid Protocol",
   "css": "/custom.css",
-  "js": ["/mermaid-modal.js", "/pdf-download.js"],
+  "js": ["/mermaid-modal.js", "/pdf-download.js", "/hero-logo.js", "/curve-playground.js"],
   "colors": {
     "primary": "#6366f1",
     "light": "#818cf8",
@@ -27,7 +27,8 @@
                 "pages": [
                   "introduction",
                   "quickstart",
-                  "architecture"
+                  "architecture",
+                  "curve-playground"
                 ]
               },
               {
@@ -99,6 +100,10 @@
                 ]
               }
             ]
+          },
+          {
+            "tab": "Playground",
+            "url": "curve-playground"
           }
         ]
       }

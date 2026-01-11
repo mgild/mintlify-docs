@@ -1,3 +1,10 @@
+/* Hero logo styling */
+.hero-logo {
+  display: block;
+  max-width: 400px;
+  margin: 0 auto 2rem;
+}
+
 /* Hide PDF download button */
 #pdf-download-btn,
 [class*="download-pdf"],
@@ -6,26 +13,36 @@ a[href*="pdf"] {
   display: none !important;
 }
 
-/* Hide mermaid pan/zoom navigation controls - aggressive targeting */
+/* Hide mermaid pan/zoom navigation controls */
 .mermaid-zoom-controls,
 .mermaid .pan-zoom,
-div[style*="position: absolute"][style*="right"],
-div[style*="position: absolute"][style*="bottom"] {
+[class*="zoom-control"],
+[class*="pan-control"],
+[class*="diagram-control"],
+[class*="mermaid-control"] {
   display: none !important;
 }
 
-/* Hide any button grids near mermaid diagrams (but not PDF modal) */
-.mermaid ~ div:has(> button):has(> button + button),
-.mermaid + div:has(> button):has(> button + button) {
+/* Hide navigation button panels near diagrams */
+div:has(> button svg):has(> button + button + button) {
   display: none !important;
 }
 
-/* Target the control panel by structure: grid of buttons */
-div[style*="grid"],
-div[style*="display: grid"] {
-  &:has(button[aria-label]) {
-    display: none !important;
-  }
+/* Target rounded button groups (zoom/pan controls) */
+button[class*="rounded"]:has(svg path),
+div:has(> button[class*="rounded"] + button[class*="rounded"]) {
+  display: none !important;
+}
+
+/* Hide any fixed/absolute positioned button panels */
+div[class*="absolute"]:has(button),
+div[class*="fixed"]:has(button:has(svg)) {
+  display: none !important;
+}
+
+/* Aggressive: hide button grids with arrow/zoom icons */
+div:has(> button:first-child svg):has(> button:last-child svg):not(.mermaid-modal-content) {
+  display: none !important;
 }
 
 /* ============================================
