@@ -17,7 +17,7 @@ flowchart TD
     Q["What do you want to do?"]
     Q --> |"Buy/sell at specific price<br/>'I'll buy SOL if it drops to $140'"| L["LIMIT ORDER"]
     Q --> |"Provide liquidity & earn fees<br/>'I'll provide liquidity $140-$160'"| C["CLMM ORDER"]
-    Q --> |"Trade without front-running<br/>'I need to swap $1M safely'"| P["PropAMM ORDER"]
+    Q --> |"Professional market making<br/>'Competitive margins, 0 fees'"| P["PropAMM ORDER"]
 
     style Q fill:#21252b,stroke:#61afef,color:#abb2bf
     style L fill:#21252b,stroke:#98c379,color:#abb2bf
@@ -29,11 +29,11 @@ flowchart TD
 
 | Feature | Limit Orders | CLMM Orders | PropAMM Orders |
 |---------|--------------|-------------|----------------|
-| **What it does** | Buy/sell at exact price | Provide liquidity in range | Trade with MEV protection |
-| **Price type** | Single price | Price range | Single price + slot fee |
-| **Best for** | Simple trading | Market making | Large/sensitive trades |
+| **What it does** | Buy/sell in price range | Provide liquidity in range | Professional market making |
+| **Price type** | Price range (density curve) | Price range (density curve) | Single price |
+| **Best for** | Simple trading | Passive liquidity | Competitive spreads, 0 fees |
 | **Complexity** | Easy | Medium | Advanced |
-| **Earns fees?** | Yes (when filled) | Yes (continuous) | No |
+| **Braid fees** | Yes | Yes | No |
 | **Paired?** | No (one-sided) | Yes (bid+ask) | No (one-sided) |
 | **Lifetime** | Until filled/cancelled | Until filled/cancelled | One slot (~400ms) |
 
@@ -85,22 +85,24 @@ Your order waits until someone sells at $145 or less. When filled, you receive S
 ```typescript
 import { Side } from '@braid/client';
 
-// Place a buy order: 10 SOL at $145
+// Place a buy order: 10 SOL across $140-$145 range
 const tx = await market.placeLimitOrder({
   side: Side.Bid,                    // Bid = buy
-  price: 145_000_000n,               // $145.00 (6 decimals)
+  pMin: 140_000_000n,                // $140.00 (6 decimals)
+  pMax: 145_000_000n,                // $145.00 (6 decimals)
+  exponent: 0,                       // 0=uniform, 1=linear, 2+=concentrated
   amount: 10_000_000_000n,           // 10 SOL (9 decimals)
   owner: wallet.publicKey,
-  expiresAt: 0,                      // 0 = never expires
 });
 
-// Or with expiration (GTC = good-til-cancelled, GTD = good-til-date)
-const txWithExpiry = await market.placeLimitOrder({
+// Sell order with concentrated curve (more liquidity at higher prices)
+const txConcentrated = await market.placeLimitOrder({
   side: Side.Ask,                    // Ask = sell
-  price: 155_000_000n,               // $155.00
+  pMin: 150_000_000n,                // $150.00
+  pMax: 160_000_000n,                // $160.00
+  exponent: 2,                       // Quadratic concentration
   amount: 5_000_000_000n,            // 5 SOL
   owner: wallet.publicKey,
-  expiresAt: Math.floor(Date.now() / 1000) + 3600, // Expires in 1 hour
 });
 ```
   </Tab>
@@ -109,12 +111,11 @@ const txWithExpiry = await market.placeLimitOrder({
 ### Key Points
 
 - **Fill-or-remain**: Your order fills immediately if there's a matching order, otherwise it stays on the book
-- **FIFO execution**: Orders at the same price fill in first-in-first-out order
-- **Fees on fill**: You pay fees only when your order gets filled (not when placing)
-- **Expiration rules**: If using expiration, it must be at least 60 seconds in the future
+- **Density curves**: Control how liquidity is distributed across your price range (Uniform, Linear, etc.)
+- **Fees on fill**: You pay Braid fees only when your order gets filled (not when placing)
 
 <Note>
-**Tip**: For immediate execution, set your price slightly worse than the best price. For example, to buy immediately, bid slightly above the best ask.
+**Tip**: For immediate execution, set your price range to overlap with the best price on the opposite side.
 </Note>
 
 ---
@@ -127,31 +128,18 @@ CLMM (Concentrated Liquidity Market Maker) orders let you provide liquidity acro
 
 Think of CLMM as saying: "I'll buy and sell in this price range, and earn fees from every trade that happens within my range."
 
-```mermaid
+```
+Traditional AMM:              CLMM (Concentrated):
+Your $10k spread everywhere   Your $10k focused in range
 
-flowchart LR
-    subgraph Traditional["Traditional AMM<br/>(liquidity everywhere, spread thin)"]
-        direction TB
-        T200["$200 - minimal"]
-        T180["$180 - some"]
-        T160["$160 - moderate"]
-        T140["$140 - moderate"]
-        T120["$120 - some"]
-        T100["$100 - minimal"]
-    end
+$200 ░░░░░░░░░░░░░░░░░░░░░░   $200 ─────────────────────
+$180 ░░░░░░░░░░░░░░░░░░░░░░   $180 ─────────────────────
+$160 ░░░░░░░░░░░░░░░░░░░░░░   $160 █████████████████████  ← Your
+$140 ░░░░░░░░░░░░░░░░░░░░░░   $140 █████████████████████  ← Range
+$120 ░░░░░░░░░░░░░░░░░░░░░░   $120 ─────────────────────
+$100 ░░░░░░░░░░░░░░░░░░░░░░   $100 ─────────────────────
 
-    subgraph Concentrated["CLMM (Concentrated)<br/>(liquidity focused)"]
-        direction TB
-        C200["$200"]
-        C180["$180"]
-        C160["$160 - HIGH"]
-        C140["$140 - HIGH<br/>Your range"]
-        C120["$120"]
-        C100["$100"]
-    end
-
-    style C160 fill:#21252b,stroke:#98c379,color:#abb2bf
-    style C140 fill:#21252b,stroke:#98c379,color:#abb2bf
+Capital efficiency: ~1x       Capital efficiency: ~50x
 ```
 
 Same capital, but CLMM earns 10-100x more fees because it's concentrated where trading happens.
@@ -192,24 +180,24 @@ The filled portion becomes a bid, ready to buy back if the price drops. This is 
 <Tabs>
   <Tab title="TypeScript">
 ```typescript
-import { placeClmmPosition, Side } from '@braid/client';
+import { Side } from '@braid/client';
 
 // Provide liquidity between $145-$155
-const tx = await placeClmmPosition({
-  market: marketAddress,
+const tx = await market.placeClmmPosition({
   side: Side.Ask,                    // Start as an ask (selling)
   pMin: 145_000_000n,                // Lower bound: $145
   pMax: 155_000_000n,                // Upper bound: $155
+  exponent: 0,                       // 0=uniform, 1=linear, 2+=concentrated
   amount: 100_000_000_000n,          // 100 SOL worth of liquidity
   owner: wallet.publicKey,
 });
 
 // Narrower range = more concentrated = more fees (but more risk)
-const narrowRange = await placeClmmPosition({
-  market: marketAddress,
+const narrowRange = await market.placeClmmPosition({
   side: Side.Bid,
   pMin: 148_000_000n,                // $148
   pMax: 152_000_000n,                // $152 (only $4 range!)
+  exponent: 0,
   amount: 50_000_000_000n,
   owner: wallet.publicKey,
 });
@@ -230,75 +218,62 @@ const narrowRange = await placeClmmPosition({
 
 ---
 
-## 3. PropAMM Orders (MEV Protection)
+## 3. PropAMM Orders (Competitive Spreads)
 
-PropAMM orders are designed to protect large trades from MEV (Maximal Extractable Value) attacks like front-running and sandwich attacks.
+PropAMM orders enable the **tightest spreads** on Braid through zero fees and slot-scoping, making them ideal for high-fidelity trading.
 
-### The MEV Problem
+### The Spread Advantage
 
-Without protection, large trades can be exploited:
+Traditional order types add fees on top of the bid-ask spread:
 
-```mermaid
-
-flowchart TB
-    subgraph MEV["Without MEV Protection"]
-        S1["1. You submit large buy order"]
-        S2["2. MEV bot sees your pending tx"]
-        S3["3. Bot front-runs, pushing price up"]
-        S4["4. Your tx executes at worse price"]
-        S5["5. Bot sells into your buy for profit"]
-    end
-
-    S1 --> S2 --> S3 --> S4 --> S5
-    S5 --> Result["You paid more<br/>Bot took the difference"]
-
-    style S2 fill:#21252b,stroke:#e06c75,color:#abb2bf
-    style S3 fill:#21252b,stroke:#e06c75,color:#abb2bf
-    style Result fill:#21252b,stroke:#e06c75,color:#abb2bf
+```
+Effective Spread Comparison:
+┌─────────────────────────────────────────────────────────┐
+│  Limit Order:  1bp spread + 20bp fee = 21bp effective   │
+│  CLMM Order:   1bp spread + 30bp fee = 31bp effective   │
+│  PropAMM:      1bp spread + 0bp fee  = 1bp effective    │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### How PropAMM Protects You
+### Why PropAMM Spreads Are Tighter
 
-PropAMM orders are only valid for a single Solana slot (~400ms) and have **zero fees**:
+Two mechanisms enable ultra-competitive pricing:
 
-```mermaid
+1. **Zero fees**: No fee overhead means the quoted spread is the actual spread
+2. **Slot-scoping**: ~400ms validity reduces adverse selection, so makers quote tighter
 
-flowchart LR
-    subgraph Slot["PropAMM Order Mechanics"]
-        Start["Slot N starts"] --> Place["Your order is placed<br/>(zero fees)"]
-        Place --> Valid["Order valid for ~400ms"]
-        Valid --> End["Slot N ends, order expires"]
-    end
+```
+PropAMM Timeline:
+│ Slot N │ ←── Order placed (0 fees) ←── Valid ~400ms ←── Expires
+└────────┘
 
-    End --> Protection["Key: Short validity window<br/>gives MEV bots no time to react"]
-
-    style Place fill:#21252b,stroke:#98c379,color:#abb2bf
-    style Valid fill:#21252b,stroke:#61afef,color:#abb2bf
-    style Protection fill:#21252b,stroke:#98c379,color:#abb2bf
+Makers quote tighter because: short exposure = lower risk = better prices
 ```
 
 ### When to Use
 
-- **Large trades**: Moving significant value where MEV matters
-- **Price-sensitive trades**: When getting the exact quoted price is important
-- **Programmatic trading**: Bots that need predictable execution
+- **Price-sensitive execution**: When spread matters more than order persistence
+- **High-frequency strategies**: Bots that continuously requote
+- **Large trades**: Get competitive pricing without fee drag
+- **Programmatic trading**: Predictable, low-cost execution
 
 ### Example Code
 
 <Tabs>
   <Tab title="TypeScript">
 ```typescript
-import { placePropOrder, Side, getCurrentSlot } from '@braid/client';
+import { Side, getCurrentSlot } from '@braid/client';
 
 // Get the current slot
 const currentSlot = await getCurrentSlot(connection);
 
-// Place a PropAMM order valid only for this slot
-const tx = await placePropOrder({
-  market: marketAddress,
+// Place a PropAMM order - tightest spreads, zero fees
+const tx = await market.placePropOrder({
   side: Side.Bid,
   slot: currentSlot,                 // Valid for this slot only
-  price: 150_000_000n,               // $150
+  pMin: 149_500_000n,                // $149.50 - tight range
+  pMax: 150_500_000n,                // $150.50 - around mid
+  exponent: 0,                       // 0=uniform, 1=linear, 2+=concentrated
   amount: 10_000_000_000_000n,       // 10,000 SOL
   owner: wallet.publicKey,
 });
@@ -311,13 +286,13 @@ await sendAndConfirmTransaction(connection, tx, [wallet]);
 
 ### Key Points
 
-- **Short-lived**: Orders expire after one slot (~400ms)
-- **Zero fees**: PropAMM orders have no trading fees
-- **Best for large trades**: The protection is most valuable for big orders
-- **Requires speed**: You must submit quickly before the slot ends
+- **Zero fees**: Spread is pure bid-ask, no fee overhead
+- **Slot-scoped**: ~400ms validity enables confident tight pricing
+- **High-fidelity**: Prices reflect true market value
+- **Requires speed**: Submit early in the slot for best fills
 
 <Note>
-**Advanced**: PropAMM is most effective when combined with private transaction submission (like Jito bundles) to prevent your order from being seen in the mempool.
+**Best Practice**: Use Jito bundles to ensure your order lands in the intended slot with predictable timing.
 </Note>
 
 ---
@@ -334,15 +309,21 @@ await sendAndConfirmTransaction(connection, tx, [wallet]);
     // Buy when price drops
     await market.placeLimitOrder({
       side: Side.Bid,
-      price: 145_000_000n,  // Buy at $145
+      pMin: 143_000_000n,
+      pMax: 145_000_000n,  // Buy around $145
+      exponent: 0,
       amount: 10_000_000_000n,
+      owner: wallet.publicKey,
     });
 
     // Sell at profit target
     await market.placeLimitOrder({
       side: Side.Ask,
-      price: 160_000_000n,  // Sell at $160
+      pMin: 160_000_000n,
+      pMax: 165_000_000n,  // Sell around $160
+      exponent: 0,
       amount: 10_000_000_000n,
+      owner: wallet.publicKey,
     });
     ```
   </Tab>
@@ -356,28 +337,33 @@ await sendAndConfirmTransaction(connection, tx, [wallet]);
     const currentPrice = await market.getMidPrice();
     const range = currentPrice / 20n; // 5% range
 
-    await placeClmmPosition({
+    await market.placeClmmPosition({
+      side: Side.Ask,
       pMin: currentPrice - range,
       pMax: currentPrice + range,
+      exponent: 0,
       amount: liquidityAmount,
-      side: Side.Ask,
+      owner: wallet.publicKey,
     });
     ```
   </Tab>
-  <Tab title="I'm trading large size">
+  <Tab title="I need tight spreads">
     **Use PropAMM Orders**
 
-    Best for protecting large trades from MEV.
+    Best for competitive pricing with zero fees.
 
     ```typescript
-    // Large trade with MEV protection
+    // Tight spread execution - zero fees
     const slot = await getCurrentSlot(connection);
 
-    await placePropOrder({
+    await market.placePropOrder({
       slot: slot,
-      price: 150_000_000n,
-      amount: 100_000_000_000_000n, // $10M+ trade
       side: Side.Bid,
+      pMin: 149_500_000n,  // Tight range around mid
+      pMax: 150_500_000n,
+      exponent: 0,
+      amount: 100_000_000_000_000n,
+      owner: wallet.publicKey,
     });
     ```
   </Tab>
@@ -387,9 +373,9 @@ await sendAndConfirmTransaction(connection, tx, [wallet]);
 
 ## Technical Deep Dive
 
-<Accordion title="Order Data Structures">
+### Order Data Structures
 
-### Limit Order Structure
+#### Limit Order Structure
 
 ```rust
 struct LimitOrder {
@@ -403,9 +389,8 @@ struct LimitOrder {
     filled_amount: u64,       // 8 bytes - Amount filled so far
     side: u8,                 // 1 byte - 0=bid, 1=ask
 
-    // Expiration
+    // Metadata
     created_at: i64,          // 8 bytes - Unix timestamp
-    expires_at: i64,          // 8 bytes - 0 = never expires
 
     // Tree node (embedded for O(log n) operations)
     left: u32,                // 4 bytes - Left child index
@@ -416,7 +401,7 @@ struct LimitOrder {
 // Total: 88 bytes per order
 ```
 
-### CLMM Order Structure
+#### CLMM Order Structure
 
 ```rust
 struct ClmmOrder {
@@ -447,7 +432,7 @@ struct ClmmOrder {
 // Total: 96 bytes per order
 ```
 
-### PropAMM Order Structure
+#### PropAMM Order Structure
 
 ```rust
 struct PropAmmOrder {
@@ -466,11 +451,9 @@ struct PropAmmOrder {
 // Note: PropAMM orders have ZERO fees (no fee fields needed)
 ```
 
-</Accordion>
+### Fee Calculation
 
-<Accordion title="Fee Calculation">
-
-### Limit Order Fees
+#### Limit Order Fees
 
 ```
 Taker Fee = fill_amount * limit_fee_bps / 10000
@@ -478,7 +461,7 @@ Maker Fee = 0 (makers don't pay)
 Protocol Fee = Taker Fee * protocol_fee_bps / 10000
 ```
 
-### CLMM Order Fees
+#### CLMM Order Fees
 
 ```
 Base Fee = fill_amount * clmm_fee_bps / 10000
@@ -486,7 +469,7 @@ Protocol Fee = Base Fee * protocol_fee_bps / 10000
 LP Fee = Base Fee - Protocol Fee (goes to liquidity provider)
 ```
 
-### PropAMM Order Fees
+#### PropAMM Order Fees
 
 PropAMM orders have **zero fees**. This compensates makers for the extremely short order lifetime (~1 slot / 400ms).
 
@@ -496,40 +479,86 @@ Fee = 0 bps (no base fee, no slot fee)
 
 The MEV protection comes from slot-scoping, not from fee mechanics.
 
-</Accordion>
+### Density Curves
 
-<Accordion title="Density Curves (CLMM)">
-
-CLMM orders use a power-law density curve to distribute liquidity:
+All order types use a power-law density curve to distribute liquidity:
 
 ```
-d(t) = n * t^(n-1)
+d(t) = k · t^n
 
 Where:
 - t = normalized position in range [0, 1]
-- n = exponent (typically 1-4)
+- n = exponent (typically 0-3)
 - d(t) = density at position t
+- k = normalization constant
 ```
 
-### Effect of Exponent
+#### Effect of Exponent
 
 | Exponent | Behavior |
 |----------|----------|
-| n = 1 | Uniform distribution (flat) |
-| n = 2 | Linear increase toward range edge |
-| n = 3 | Quadratic increase (more concentrated at edges) |
-| n = 4 | Highly concentrated at range boundaries |
+| n = 0 | Uniform distribution (flat) |
+| n = 0.5 | Square root (steep rise that flattens) |
+| n = 1 | Linear increase toward range edge |
+| n = 2 | Quadratic increase (more concentrated at edges) |
+| n = 3 | Highly concentrated at range boundaries |
 
-```
-n=1 (uniform)     n=2 (linear)      n=4 (concentrated)
-    ████████          ██████████        ████████████████
-    ████████          ██████████        ████████████████
-    ████████          ████████          ████████████████
-    ████████          ██████            ██████████
-    ████████          ████              ██████
-    ████████          ██                ██
-```
+<Tabs>
+  <Tab title="n = 0 (Uniform)">
+    <Frame>
+      <svg viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+        <rect x="20" y="20" width="160" height="70" fill="#6366f1" fillOpacity="0.7" rx="2"/>
+        <line x1="20" y1="90" x2="180" y2="90" stroke="#888" strokeWidth="1.5"/>
+        <line x1="20" y1="20" x2="20" y2="90" stroke="#888" strokeWidth="1.5"/>
+        <text x="100" y="108" textAnchor="middle" fill="#888" fontSize="10">Price</text>
+        <text x="100" y="12" textAnchor="middle" fill="#a1a1aa" fontSize="9">d(t) = k</text>
+      </svg>
+    </Frame>
+  </Tab>
+  <Tab title="n = 0.5 (√)">
+    <Frame>
+      <svg viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 20 90 C 40 40 100 25 180 20 L 180 90 Z" fill="#a855f7" fillOpacity="0.7"/>
+        <line x1="20" y1="90" x2="180" y2="90" stroke="#888" strokeWidth="1.5"/>
+        <line x1="20" y1="20" x2="20" y2="90" stroke="#888" strokeWidth="1.5"/>
+        <text x="100" y="108" textAnchor="middle" fill="#888" fontSize="10">Price</text>
+        <text x="100" y="12" textAnchor="middle" fill="#a1a1aa" fontSize="9">d(t) = k · √t</text>
+      </svg>
+    </Frame>
+  </Tab>
+  <Tab title="n = 1 (Linear)">
+    <Frame>
+      <svg viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 20 90 L 180 90 L 180 20 Z" fill="#22c55e" fillOpacity="0.7"/>
+        <line x1="20" y1="90" x2="180" y2="90" stroke="#888" strokeWidth="1.5"/>
+        <line x1="20" y1="20" x2="20" y2="90" stroke="#888" strokeWidth="1.5"/>
+        <text x="100" y="108" textAnchor="middle" fill="#888" fontSize="10">Price</text>
+        <text x="100" y="12" textAnchor="middle" fill="#a1a1aa" fontSize="9">d(t) = k · t</text>
+      </svg>
+    </Frame>
+  </Tab>
+  <Tab title="n = 2 (Quadratic)">
+    <Frame>
+      <svg viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 20 90 C 80 90 140 80 180 20 L 180 90 Z" fill="#f59e0b" fillOpacity="0.7"/>
+        <line x1="20" y1="90" x2="180" y2="90" stroke="#888" strokeWidth="1.5"/>
+        <line x1="20" y1="20" x2="20" y2="90" stroke="#888" strokeWidth="1.5"/>
+        <text x="100" y="108" textAnchor="middle" fill="#888" fontSize="10">Price</text>
+        <text x="100" y="12" textAnchor="middle" fill="#a1a1aa" fontSize="9">d(t) = k · t²</text>
+      </svg>
+    </Frame>
+  </Tab>
+  <Tab title="n = 3 (Cubic)">
+    <Frame>
+      <svg viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 20 90 C 100 90 160 85 180 20 L 180 90 Z" fill="#ec4899" fillOpacity="0.7"/>
+        <line x1="20" y1="90" x2="180" y2="90" stroke="#888" strokeWidth="1.5"/>
+        <line x1="20" y1="20" x2="20" y2="90" stroke="#888" strokeWidth="1.5"/>
+        <text x="100" y="108" textAnchor="middle" fill="#888" fontSize="10">Price</text>
+        <text x="100" y="12" textAnchor="middle" fill="#a1a1aa" fontSize="9">d(t) = k · t³</text>
+      </svg>
+    </Frame>
+  </Tab>
+</Tabs>
 
 Higher exponents provide more liquidity at range boundaries, which is useful when you expect price to mean-revert within your range.
-
-</Accordion>

@@ -26,14 +26,15 @@ const BUY_AMOUNT = 100_000_000_000n; // 100 SOL
 async function buyTheDip() {
   const tx = await market.placeLimitOrder({
     side: Side.Bid,               // Buying SOL
-    price: BUY_PRICE,
+    pMin: BUY_PRICE - 5_000_000n, // $135 lower bound
+    pMax: BUY_PRICE,              // $140 upper bound
+    exponent: 0,                  // 0=uniform, 1=linear, 2+=concentrated
     amount: BUY_AMOUNT,
     owner: wallet.publicKey,
-    expiresAt: 0,                 // Never expires
   });
 
   await sendAndConfirmTransaction(connection, tx, [wallet]);
-  console.log(`Bid placed: 100 SOL @ $140`);
+  console.log(`Bid placed: 100 SOL @ $135-$140`);
 }
 ```
 
@@ -54,14 +55,15 @@ const SELL_AMOUNT = 50_000_000_000n; // 50 SOL
 async function takeProfit() {
   const tx = await market.placeLimitOrder({
     side: Side.Ask,               // Selling SOL
-    price: SELL_PRICE,
+    pMin: SELL_PRICE,             // $160 lower bound
+    pMax: SELL_PRICE + 10_000_000n, // $170 upper bound
+    exponent: 0,                  // 0=uniform, 1=linear, 2+=concentrated
     amount: SELL_AMOUNT,
     owner: wallet.publicKey,
-    expiresAt: Math.floor(Date.now() / 1000) + 86400 * 7, // Expires in 1 week
   });
 
   await sendAndConfirmTransaction(connection, tx, [wallet]);
-  console.log(`Ask placed: 50 SOL @ $160, expires in 1 week`);
+  console.log(`Ask placed: 50 SOL @ $160-$170`);
 }
 ```
 
@@ -91,7 +93,9 @@ $135 ─────────── Buy 34% ───────────
 
 ```typescript
 interface GridLevel {
-  price: bigint;
+  pMin: bigint;
+  pMax: bigint;
+  exponent: number;
   amount: bigint;
   side: Side;
 }
@@ -102,10 +106,11 @@ async function deployGrid(levels: GridLevel[]) {
   for (const level of levels) {
     const tx = await market.placeLimitOrder({
       side: level.side,
-      price: level.price,
+      pMin: level.pMin,
+      pMax: level.pMax,
+      exponent: level.exponent,
       amount: level.amount,
       owner: wallet.publicKey,
-      expiresAt: 0,
     });
     transactions.push(tx);
   }
@@ -121,13 +126,13 @@ async function deployGrid(levels: GridLevel[]) {
 // Example: Deploy a grid around $150
 const grid: GridLevel[] = [
   // Sells (asks)
-  { price: 165_000_000n, amount: 20_000_000_000n, side: Side.Ask },
-  { price: 160_000_000n, amount: 20_000_000_000n, side: Side.Ask },
-  { price: 155_000_000n, amount: 20_000_000_000n, side: Side.Ask },
+  { pMin: 165_000_000n, pMax: 170_000_000n, exponent: 0, amount: 20_000_000_000n, side: Side.Ask },
+  { pMin: 160_000_000n, pMax: 165_000_000n, exponent: 0, amount: 20_000_000_000n, side: Side.Ask },
+  { pMin: 155_000_000n, pMax: 160_000_000n, exponent: 0, amount: 20_000_000_000n, side: Side.Ask },
   // Buys (bids)
-  { price: 145_000_000n, amount: 33_000_000_000n, side: Side.Bid },
-  { price: 140_000_000n, amount: 33_000_000_000n, side: Side.Bid },
-  { price: 135_000_000n, amount: 34_000_000_000n, side: Side.Bid },
+  { pMin: 145_000_000n, pMax: 150_000_000n, exponent: 0, amount: 33_000_000_000n, side: Side.Bid },
+  { pMin: 140_000_000n, pMax: 145_000_000n, exponent: 0, amount: 33_000_000_000n, side: Side.Bid },
+  { pMin: 135_000_000n, pMax: 140_000_000n, exponent: 0, amount: 34_000_000_000n, side: Side.Bid },
 ];
 
 await deployGrid(grid);
@@ -169,15 +174,15 @@ Traditional Grid:           CLMM Position:
 ### Basic CLMM Position
 
 ```typescript
-import { placeClmmPosition, Side } from '@braid/client';
+import { Side } from '@braid/client';
 
 async function provideConcentratedLiquidity() {
   // Provide $10,000 worth of liquidity between $145-$155
-  const tx = await placeClmmPosition({
-    market: marketAddress,
+  const tx = await market.placeClmmPosition({
     side: Side.Ask,               // Start with SOL to sell
     pMin: 145_000_000n,           // Lower bound: $145
     pMax: 155_000_000n,           // Upper bound: $155
+    exponent: 0,                  // 0=uniform, 1=linear, 2+=concentrated
     amount: 66_000_000_000n,      // ~66 SOL (~$10,000 at $150)
     owner: wallet.publicKey,
   });
@@ -240,34 +245,32 @@ Only use CLMM if you understand and accept this risk.
 
 ---
 
-## Strategy 4: MEV-Protected Large Trades (PropAMM)
+## Strategy 4: High-Fidelity Execution (PropAMM)
 
-**Goal**: Execute large trades without being front-run or sandwiched.
+**Goal**: Execute trades with the tightest spreads and zero fees.
 
 ### When to Use PropAMM
 
-- Trade size > $10,000
-- Price-sensitive execution
-- Any trade where MEV bots might target you
+- Price-sensitive execution where spread matters
+- High-frequency trading strategies
+- Large trades where fee savings add up
+- Any trade where you want true mid-market pricing
 
 ### Basic PropAMM Trade
 
 ```typescript
-import {
-  placePropOrder,
-  take,
-  Side,
-  getCurrentSlot
-} from '@braid/client';
+import { Side, getCurrentSlot } from '@braid/client';
 
-async function mevProtectedSwap(inputAmount: bigint, minOutput: bigint) {
+async function tightSpreadSwap(inputAmount: bigint, minOutput: bigint) {
   const currentSlot = await getCurrentSlot(connection);
 
-  // Step 1: Place PropAMM order (valid only this slot)
+  // Step 1: Place PropAMM order (zero fees, tight spread)
   const placeTx = await market.placePropOrder({
     side: Side.Bid,
     slot: currentSlot,
-    price: 155_000_000n,          // Limit price: $155 max
+    pMin: 149_500_000n,           // Tight range around mid
+    pMax: 150_500_000n,           // ~0.67% spread
+    exponent: 0,                  // 0=uniform, 1=linear, 2+=concentrated
     amount: inputAmount,
     owner: wallet.publicKey,
   });
@@ -277,24 +280,23 @@ async function mevProtectedSwap(inputAmount: bigint, minOutput: bigint) {
     side: Side.Ask,
     amount: inputAmount,
     minOut: minOutput,
-    limitPrice: 0n,
   });
 
   // Submit as bundle for atomicity
   await sendBundle(connection, [placeTx, takeTx], [wallet]);
 
-  console.log(`MEV-protected swap complete`);
+  console.log(`Zero-fee swap complete`);
 }
 ```
 
-### Private Submission (Maximum Protection)
+### Jito Bundle Submission (Recommended)
 
-For the strongest protection, submit through a private channel:
+For best fill rates, submit through Jito to ensure slot timing:
 
 ```typescript
 import { Jito } from '@jito-labs/sdk';
 
-async function privateSwap() {
+async function bundledSwap() {
   const jito = new Jito(connection);
 
   // Build bundle
@@ -303,7 +305,7 @@ async function privateSwap() {
     takeTx,
   ]);
 
-  // Submit privately (never hits public mempool)
+  // Submit via Jito (predictable slot landing)
   await jito.sendBundle(bundle, {
     tip: 10000, // Optional tip for priority
   });
@@ -446,25 +448,33 @@ The most effective approach often combines multiple strategies:
 ```typescript
 async function combinedStrategy() {
   // 1. Core position: CLMM for fee income
-  await placeClmmPosition({
+  await market.placeClmmPosition({
+    side: Side.Ask,
     pMin: 140_000_000n,
     pMax: 160_000_000n,
+    exponent: 0,
     amount: 50_000_000_000n, // 50% of capital
-    side: Side.Ask,
+    owner: wallet.publicKey,
   });
 
   // 2. Accumulation layer: limit bids below range
   await market.placeLimitOrder({
     side: Side.Bid,
-    price: 135_000_000n,
+    pMin: 130_000_000n,
+    pMax: 135_000_000n,
+    exponent: 0,
     amount: 25_000_000_000n, // 25% of capital
+    owner: wallet.publicKey,
   });
 
   // 3. Distribution layer: limit asks above range
   await market.placeLimitOrder({
     side: Side.Ask,
-    price: 165_000_000n,
+    pMin: 165_000_000n,
+    pMax: 170_000_000n,
+    exponent: 0,
     amount: 25_000_000_000n, // 25% of capital
+    owner: wallet.publicKey,
   });
 
   console.log('Combined strategy deployed');

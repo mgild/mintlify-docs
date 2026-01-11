@@ -21,14 +21,16 @@ flowchart LR
     Input["Your swap request<br/>'Buy SOL with 1000 USDC'"] --> Engine
 
     subgraph Engine["MATCHING ENGINE"]
-        E1["1. Find best prices"]
-        E2["2. Fill orders"]
-        E3["3. Transfer tokens"]
-        E1 --> E2 --> E3
+        EngineSpacer[ ]
+        E1["Find best prices"]
+        E2["Fill orders"]
+        E3["Transfer tokens"]
+        EngineSpacer --> E1 --> E2 --> E3
     end
 
     Engine --> Output["Trade executed!<br/>'You received 6.5 SOL'"]
 
+    style EngineSpacer fill:transparent,stroke:transparent,color:transparent
     style Input fill:#21252b,stroke:#61afef,color:#abb2bf
     style Output fill:#21252b,stroke:#98c379,color:#abb2bf
     style Engine fill:#21252b,stroke:#c678dd,color:#abb2bf
@@ -77,7 +79,6 @@ const ix = Market.swapIx({
   side: Side.Ask,              // Buying from asks
   amount: 100_000_000n,        // 100 USDC
   minOut: 650_000_000n,        // At least 0.65 SOL (slippage protection)
-  limitPrice: 0n,              // No price limit (market order)
   // ... other required accounts
 });
 ```
@@ -134,12 +135,11 @@ When you call `take()`, you provide these parameters:
 
 ```typescript
 interface TakeParams {
-  amount: bigint;        // How much you're spending
-  minOut: bigint;        // Minimum you'll accept (slippage protection)
-  limitPrice: bigint;    // Max price you'll pay (0 = no limit)
-  side: Side;            // Ask = buying base, Bid = selling base
-  minOrderBips: number;  // Skip tiny orders (saves compute)
-  maxOrders: number;     // Max orders to fill (saves compute)
+  amount: bigint;         // How much you're spending
+  minOut: bigint;         // Minimum you'll accept (slippage protection)
+  side: Side;             // Ask = buying base, Bid = selling base
+  minOrderBips?: number;  // Optional: Skip tiny orders (saves compute)
+  maxOrders?: number;     // Optional: Max orders to fill (saves compute)
 }
 ```
 
@@ -149,10 +149,9 @@ interface TakeParams {
 |-----------|--------------|---------|
 | `amount` | Input amount to swap | `100_000_000n` = 100 USDC |
 | `minOut` | Revert if output below this | `650_000_000n` = 0.65 SOL |
-| `limitPrice` | Stop filling above/below this | `155_000_000n` = $155 max |
 | `side` | Direction of trade | `Ask` = buy, `Bid` = sell |
-| `minOrderBips` | Skip orders smaller than X% | `100` = skip orders &lt;1% |
-| `maxOrders` | Stop after N fills | `10` = max 10 orders |
+| `minOrderBips` | (Optional) Skip orders smaller than X% | `100` = skip orders &lt;1% |
+| `maxOrders` | (Optional) Stop after N fills | `10` = max 10 orders |
 
 ### Slippage Protection
 
@@ -182,12 +181,11 @@ Here's the actual algorithm the matching engine uses:
 ```
 ALGORITHM: OrderbookTake
 
-INPUT: amount, minOut, limitPrice, side, maxOrders
+INPUT: amount, minOut, side, maxOrders (optional)
 
 total_output = 0
 amount_remaining = amount
 orders_touched = 0
-skips = 0
 
 WHILE amount_remaining > 0 AND orders_touched < maxOrders:
 
@@ -202,13 +200,7 @@ WHILE amount_remaining > 0 AND orders_touched < maxOrders:
     IF best == null:
         BREAK  // No more orders
 
-    IF limitPrice > 0 AND violatesLimit(best.price, limitPrice, side):
-        BREAK  // Hit price limit
-
     IF best.amount < amount_remaining * minOrderBips / 10000:
-        skips++
-        IF skips > MAX_SKIPS:
-            BREAK
         source.skipOrder(best)
         CONTINUE
 
@@ -295,14 +287,12 @@ The matching engine has several protections against abuse:
 | Mechanism | Purpose |
 |-----------|---------|
 | `maxOrders` | Cap fills to stay within CU budget |
-| `MAX_SKIPS` (32) | Don't waste CU on tiny orders |
 | `minOrderBips` | Skip dust orders |
 
 ### Price Protection
 
 | Mechanism | Purpose |
 |-----------|---------|
-| `limitPrice` | Stop if price exceeds limit |
 | `minOut` | Revert if output too low |
 
 ### Example: Avoiding Dust Griefing
@@ -322,8 +312,7 @@ Without protection:
 With minOrderBips = 100 (1%):
   Order 1: 0.00001 SOL < 1% of 1 SOL → SKIP
   Order 2: 0.00001 SOL < 1% of 1 SOL → SKIP
-  After 32 skips: Stop trying small orders
-  Fill from real orders
+  Tiny orders skipped, fill from real orders
 ```
 
 ## Getting Quotes
@@ -433,46 +422,7 @@ fn is_better_price(a: u64, b: u64, side: Side) -> bool {
         Side::Bid => a > b,
     }
 }
-
-fn violates_limit(order_price: u64, limit: u64, side: Side) -> bool {
-    if limit == 0 { return false; } // No limit set
-
-    match side {
-        // For asks: order price must be <= limit
-        Side::Ask => order_price > limit,
-
-        // For bids: order price must be >= limit
-        Side::Bid => order_price < limit,
-    }
-}
 ```
-
-</Accordion>
-
-<Accordion title="Compute Unit Breakdown">
-
-Typical CU costs for matching operations:
-
-| Operation | CU Cost | Notes |
-|-----------|---------|-------|
-| Load market | ~3,000 | Account deserialization |
-| Load shard | ~5,000 | Per shard loaded |
-| Find best price | ~1,000 | Per source queried |
-| Fill limit order | ~8,000 | Tree update included |
-| Fill CLMM order | ~12,000 | Includes flip to inverse |
-| Fill PropAMM order | ~8,000 | Similar to limit |
-| Token transfer | ~3,000 | Per transfer (2 per swap) |
-
-### Transaction Budget
-
-A typical swap uses:
-- Market load: 3,000 CU
-- 6 shards: 30,000 CU
-- Best price (3 sources): 3,000 CU
-- 5 fills: 40,000-60,000 CU
-- Transfers: 6,000 CU
-
-**Total: ~90,000 CU** (well under 1.4M limit)
 
 </Accordion>
 

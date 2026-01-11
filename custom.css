@@ -1,3 +1,11 @@
+/* Hide PDF download button */
+#pdf-download-btn,
+[class*="download-pdf"],
+button:has(svg + span:contains("PDF")),
+a[href*="pdf"] {
+  display: none !important;
+}
+
 /* Hide mermaid pan/zoom navigation controls - aggressive targeting */
 .mermaid-zoom-controls,
 .mermaid .pan-zoom,

@@ -86,14 +86,15 @@ Braid employs multiple defense mechanisms that work together:
 
 graph TB
     subgraph Defenses["BRAID MEV DEFENSES"]
+        DefensesSpacer[ ]
         L1["Layer 1: ORDER CURVES<br/>No discrete triggers<br/>Smooth price movement<br/>Pro-rata fills"]
         L2["Layer 2: PROPAMM<br/>Orders expire in ~400ms<br/>Zero fees<br/>Too fast for mempool"]
-        L3["Layer 3: PRICE LIMITS<br/>User-defined max price<br/>min_out reverts<br/>Bounds profit margins"]
+        L3["Layer 3: SLIPPAGE<br/>min_out reverts<br/>Auto price bounds<br/>Limits profit margins"]
         L4["Layer 4: HARDENING<br/>Sequence numbers<br/>Capacity limits<br/>Minimum order sizes"]
+        DefensesSpacer --> L1 --> L2 --> L3 --> L4
     end
 
-    L1 --> L2 --> L3 --> L4
-
+    style DefensesSpacer fill:transparent,stroke:transparent,color:transparent
     style L1 fill:#21252b,stroke:#61afef,color:#abb2bf
     style L2 fill:#21252b,stroke:#c678dd,color:#abb2bf
     style L3 fill:#21252b,stroke:#98c379,color:#abb2bf
@@ -158,9 +159,9 @@ This eliminates the "race to be first" that incentivizes latency competition and
 
 ## Layer 2: PropAMM Slot-Scoped Orders
 
-PropAMM orders are Braid's most powerful MEV defense. They're only valid for a single Solana slot (~400ms).
+PropAMM orders are designed for competitive spreads through zero fees and slot-scoping. The short validity window also happens to provide strong MEV resistance.
 
-### How Slot-Scoping Protects You
+### How Slot-Scoping Works
 
 ```
 Timeline of a PropAMM order:
@@ -170,16 +171,16 @@ Slot N-1     Slot N              Slot N+1
    │           ├─ Order placed      │
    │           │                    │
    │           ├─ Valid: ~400ms     ├─ Order EXPIRED
-   │           │  (too fast for     │  (unfillable)
-   │           │   mempool bots)    │
+   │           │  (zero fees,       │  (unfillable)
+   │           │   tight spreads)   │
    │           │                    │
    ▼           ▼                    ▼
 
-Bot would need to:
-1. See your tx in mempool
-2. Analyze profitability
-3. Construct attack tx
-4. Get attack tx included
+Why this helps MEV resistance:
+1. Bot sees your tx in mempool
+2. Analyzes profitability
+3. Constructs attack tx
+4. Too slow - order already expired
 
 All in &lt;400ms? Nearly impossible.
 ```
@@ -214,23 +215,9 @@ fn should_include_prop_amm(current_slot: u64, restart_slot: u64) -> bool {
 
 ---
 
-## Layer 3: Price Limits & Slippage Protection
+## Layer 3: Slippage Protection
 
 Every swap can specify limits that bound potential losses:
-
-### limitPrice: Maximum Acceptable Price
-
-```typescript
-// Will not fill any orders priced above $155
-await Market.swapIx({
-  side: Side.Ask,          // Buying SOL
-  amount: 100_000_000n,    // 100 USDC
-  limitPrice: 155_000_000n, // Won't pay more than $155/SOL
-  minOut: 0n,
-});
-```
-
-If an attacker pushes the price above $155, the transaction simply stops filling rather than executing at a bad price.
 
 ### minOut: Minimum Acceptable Output
 
@@ -239,24 +226,11 @@ If an attacker pushes the price above $155, the transaction simply stops filling
 await Market.swapIx({
   side: Side.Ask,
   amount: 100_000_000n,
-  limitPrice: 0n,
   minOut: 640_000_000n,    // At least 0.64 SOL or revert
 });
 ```
 
-This provides "all or nothing" protection - if the trade isn't good enough, it doesn't happen.
-
-### Combined Protection
-
-```typescript
-// Best practice: use both
-await Market.swapIx({
-  side: Side.Ask,
-  amount: 100_000_000n,
-  limitPrice: 155_000_000n,  // Price cap
-  minOut: 640_000_000n,      // Output floor
-});
-```
+This provides "all or nothing" protection - if the trade isn't good enough, it doesn't happen. The matching engine automatically enforces a price limit of 20 bips from the estimated output, preventing significant price manipulation.
 
 ---
 
@@ -323,7 +297,7 @@ fn should_fill_order(order: &Order, remaining: u64) -> bool {
 1. Attacker places 1000 orders of 0.0001 SOL each
 2. Your swap attempts to fill them
 3. Each fill: order_amount < 0.2% of swap_amount
-4. Orders skipped (capped at MAX_SKIPS = 32)
+4. Tiny orders skipped automatically
 5. Real orders filled instead
 ```
 

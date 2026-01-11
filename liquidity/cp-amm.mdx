@@ -17,8 +17,7 @@ The CP-AMM follows the standard `x * y = k` invariant:
 ## Add Liquidity
 
 ```typescript
-const tx = await cpAddLiquidity({
-  market: marketAddress,
+const tx = await market.cpAddLiquidity({
   amountA: 1_000_000n,
   maxAmountB: 1_000_000n,  // Slippage protection
   minLpTokens: 0n,
@@ -29,8 +28,7 @@ const tx = await cpAddLiquidity({
 ## Remove Liquidity
 
 ```typescript
-const tx = await cpRemoveLiquidity({
-  market: marketAddress,
+const tx = await market.cpRemoveLiquidity({
   lpAmount: 500_000n,
   minAmountA: 0n,
   minAmountB: 0n,

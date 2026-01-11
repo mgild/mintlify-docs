@@ -68,8 +68,9 @@ The price at which total supply equals total demand in the matching engine. Foun
 
 ### Exponent (n)
 The power in the order curve density function. Controls the shape of liquidity distribution:
-- n=1: Uniform (flat)
-- n=2: Concentrated at boundaries
+- n=0: Uniform (flat)
+- n=1: Linear increase toward edge
+- n=2: Quadratic (concentrated)
 - n>2: Highly concentrated
 
 ---
@@ -89,11 +90,8 @@ A form of MEV where a bot sees your pending transaction and places their own tra
 
 ## G
 
-### GTC (Good-Till-Cancelled)
-An order that remains active until filled or explicitly cancelled. Most limit orders are GTC.
-
-### GTD (Good-Till-Date)
-An order with an expiration timestamp. Automatically cancelled if not filled by the specified time.
+### Gamma
+In market making, how quickly you accumulate inventory as prices move. Density curves let you control your gamma exposure.
 
 ---
 
@@ -183,7 +181,7 @@ How much your trade moves the market price. Larger trades have larger price impa
 Filling multiple orders at the same price proportionally by their size, rather than first-in-first-out. Eliminates latency advantages.
 
 ### PropAMM
-Slot-scoped orders with zero fees. Valid for only ~400ms, providing strong MEV protection.
+Slot-scoped orders with zero fees. Valid for only ~400ms, enabling ultra-competitive spreads and high-fidelity trading.
 
 ### Protocol
 The global Solana account storing protocol-wide settings like admin keys and default fee rates.
@@ -276,8 +274,6 @@ A method of calculating a representative value where each component contributes 
 | CLMM | Concentrated Liquidity MM | Range-bound liquidity orders |
 | CP-AMM | Constant Product AMM | Traditional x·y=k pool |
 | CU | Compute Units | Solana's compute measure |
-| GTC | Good-Till-Cancelled | Non-expiring order |
-| GTD | Good-Till-Date | Expiring order |
 | IL | Impermanent Loss | LP opportunity cost |
 | LP | Liquidity Provider | Someone providing liquidity |
 | MEV | Maximal Extractable Value | Transaction reordering profits |

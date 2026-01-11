@@ -216,6 +216,7 @@ const tx = await Market.placeLimitOrderIx({
   side: Side.Bid,              // Bid = buy, Ask = sell
   pMin: 148_000_000n,          // Lower bound $148.00 (6 decimals)
   pMax: 150_000_000n,          // Upper bound $150.00 (6 decimals)
+  exponent: 0,                 // 0=uniform, 1=linear, 2+=concentrated
   amount: 1_000_000_000n,      // 1 SOL (9 decimals)
   owner: wallet.publicKey,
 });
@@ -263,7 +264,6 @@ const tx = await Market.swapIx({
   side: Side.Ask,              // Buy from asks
   amount: inputAmount,         // How much to spend
   minOut: minOutput,           // Minimum to receive (slippage protection)
-  limitPrice: 0n,              // 0 = no price limit (market order)
   taker: wallet.publicKey,
 });
 
@@ -305,6 +305,7 @@ async function main() {
     side: Side.Bid,
     pMin: 148_000_000n,
     pMax: 150_000_000n,
+    exponent: 0,
     amount: 1_000_000_000n,
     owner: wallet.publicKey,
   });
@@ -316,7 +317,6 @@ async function main() {
     side: Side.Ask,
     amount: 100_000_000n,
     minOut: 600_000_000n,
-    limitPrice: 0n,
     taker: wallet.publicKey,
   });
   await sendAndConfirmTransaction(connection, swapTx, [wallet]);

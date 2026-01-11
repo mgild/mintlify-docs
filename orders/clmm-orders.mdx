@@ -1,101 +1,200 @@
 ---
 title: CLMM Orders
-description: 'Concentrated liquidity market making'
+description: 'Provide liquidity across a price range and earn fees'
 ---
 
 # CLMM Orders
 
-Concentrated Liquidity Market Maker orders provide liquidity across a price range with power-law density curves.
+CLMM (Concentrated Liquidity Market Maker) orders let you provide liquidity within a price range. When trades happen in your range, you earn fees.
 
-## Key Concept: Paired Orders
+## The Basic Idea
 
-Every CLMM order creates a **bid+ask pair**:
+Imagine you have 10 SOL and want to sell it, but not all at once. With a CLMM order, you say:
 
-```mermaid
+> "I'll sell my SOL anywhere between $145 and $155"
 
-flowchart TB
-    Place["Place CLMM Ask<br/>(1000 A in range [95, 105])"] --> Result
+As the price moves through your range, your SOL gradually sells. And here's the key part: **the USDC you receive becomes buying power** to buy SOL back if the price drops.
 
-    subgraph Result
-        A["ASK: 1000A<br/>[95, 105]<br/>(primary)"] <--> B["BID: 0 B<br/>[95, 105]<br/>(inverse)"]
-    end
+```
+You deposit: 10 SOL
+Your range: $145 - $155
 
-    style A fill:#21252b,stroke:#e06c75,color:#abb2bf
-    style B fill:#21252b,stroke:#98c379,color:#abb2bf
+Price rises to $150:
+  - You've sold ~5 SOL
+  - You now have ~5 SOL + ~$725 USDC buying power
+
+Price rises to $155:
+  - You've sold all 10 SOL
+  - You now have ~$1,500 USDC buying power
+
+Price drops back to $150:
+  - Your USDC automatically buys SOL back
+  - You now have ~5 SOL + ~$725 USDC again
 ```
 
-When filled, liquidity **flips** to the inverse:
+This is **automatic market making** - you're continuously buying low and selling high within your range.
 
-```mermaid
-
-flowchart TB
-    Take["Taker buys 600 A @ 100"] --> After
-
-    subgraph After["After Fill (Flipped!)"]
-        A2["ASK: 400A<br/>[95, 105]"] <--> B2["BID: 600B<br/>[95, 105]"]
-    end
-
-    style A2 fill:#21252b,stroke:#e06c75,color:#abb2bf
-    style B2 fill:#21252b,stroke:#98c379,color:#abb2bf
-```
-
-## Place Position
+## Place a Position
 
 ```typescript
-const tx = await placeClmmPosition({
-  market: marketAddress,
-  side: Side.Ask,
-  pMin: 95_000_000n,
-  pMax: 105_000_000n,
-  amount: 10_000_000n,
-  owner: wallet.publicKey,
+// Place an ask position (selling SOL)
+const ixs = await market.placeClmmPosition({
+  ask: {
+    pMin: 145_000_000n,       // Lower price bound: $145
+    pMax: 155_000_000n,       // Upper price bound: $155
+    amount: 10_000_000_000n,  // 10 SOL (9 decimals)
+    exponent: 0,              // 0=uniform, 1=linear, 2+=concentrated
+  },
+  owner: wallet,
+});
+
+// Or place both bid and ask together
+const ixs = await market.placeClmmPosition({
+  bid: {
+    pMin: 140_000_000n,       // Bid range: $140-$145
+    pMax: 145_000_000n,
+    amount: 5_000_000_000n,
+    exponent: 0,
+  },
+  ask: {
+    pMin: 145_000_000n,       // Ask range: $145-$150
+    pMax: 150_000_000n,
+    amount: 5_000_000_000n,
+    exponent: 0,
+  },
+  owner: wallet,
 });
 ```
 
-## Cancel Position
+## How the Flip Works
 
-Cancelling removes **both** the primary and inverse orders:
+When you place a CLMM order, Braid creates **two linked orders**:
+
+| Order | What it does |
+|-------|--------------|
+| **Primary** | Your initial position (e.g., selling SOL) |
+| **Inverse** | Receives the proceeds (e.g., buying power in USDC) |
+
+When someone buys from your primary order, the filled amount "flips" to the inverse:
+
+```
+BEFORE (you deposited 10 SOL to sell):
+  Primary (Ask):  10 SOL available to sell @ $145-155
+  Inverse (Bid):  $0 buying power
+
+AFTER someone buys 4 SOL at $150:
+  Primary (Ask):  6 SOL remaining to sell @ $150-155
+  Inverse (Bid):  $600 buying power @ $145-150
+
+The $600 will automatically buy SOL if price drops below $150.
+```
+
+## Earning Fees
+
+Every time someone trades against your position, you earn a fee:
+
+```
+Trade: Someone buys 1 SOL from you at $150
+Fee rate: 30 bps (0.3%)
+
+Your earnings: 1 SOL × $150 × 0.003 = $0.45
+```
+
+Fees accumulate in your position and are returned when you cancel.
+
+## Cancel a Position
+
+Cancelling withdraws both your remaining tokens AND any flipped proceeds:
 
 ```typescript
-const tx = await cancelClmmPosition({
-  market: marketAddress,
+const tx = await market.cancelClmmPosition({
   orderIdx: 42,
   side: Side.Ask,
   owner: wallet.publicKey,
 });
-// Refunds from both vaults (A and B)
+// Returns: remaining SOL + any USDC from fills
 ```
 
-## Power-Law Density
+## Choosing Your Range
 
-CLMM orders use power-law density curves:
+| Range Width | Pros | Cons |
+|-------------|------|------|
+| **Narrow** (±2%) | Higher fee earnings per dollar | More impermanent loss risk, needs monitoring |
+| **Medium** (±10%) | Balanced | Moderate risk |
+| **Wide** (±25%) | Low maintenance, less IL | Lower fee earnings per dollar |
 
+```typescript
+// Narrow range - aggressive fee farming
+const ixs = await market.placeClmmPosition({
+  ask: {
+    pMin: 148_000_000n,  // $148
+    pMax: 152_000_000n,  // $152 (±~1.3%)
+    amount: 10_000_000_000n,
+    exponent: 0,
+  },
+  owner: wallet,
+});
+
+// Wide range - passive income
+const ixs = await market.placeClmmPosition({
+  ask: {
+    pMin: 120_000_000n,  // $120
+    pMax: 180_000_000n,  // $180 (±~20%)
+    amount: 10_000_000_000n,
+    exponent: 0,
+  },
+  owner: wallet,
+});
 ```
-d(t) = n * t^(n-1)
-```
 
-Where `t` is normalized position in the price range [0, 1].
+## Density Curves (Exponent)
 
-| Exponent | Behavior |
-|----------|----------|
-| n = 1 | Uniform density (constant) |
-| n = 2 | Linear increasing density |
-| n > 2 | Concentrated toward high prices |
+The `exponent` parameter controls how your liquidity is distributed across the range:
 
-## Fill with Flip
+| Exponent | Distribution | Best for |
+|----------|--------------|----------|
+| 0 | Uniform - equal liquidity everywhere | General purpose |
+| 1 | Linear - more liquidity toward one edge | Directional bias |
+| 2+ | Concentrated - most liquidity at edges | Advanced strategies |
 
-When a CLMM order is filled:
+For most users, `exponent: 0` (uniform) is the right choice.
 
-1. Primary order's `amount_remaining` decreases
-2. Inverse order's `amount_remaining` increases
-3. No new allocation needed (inverse already exists)
+## Impermanent Loss
 
-```rust
-pub fn fill_with_flip(&mut self, side, idx, fill_amount, price) {
-    // Reduce filled order
-    primary.amount_remaining -= actual_fill;
+<Warning>
+CLMM positions have **impermanent loss (IL)** risk. If price moves strongly in one direction:
 
-    // Flip liquidity to inverse
-    inverse.amount_remaining += output_amount;
-}
-```
+- Price goes up a lot: You end up holding all USDC (you sold all your SOL on the way up)
+- Price goes down a lot: You end up holding all SOL (you bought SOL all the way down)
+
+The loss is "impermanent" because it reverses if price returns to your entry point. But if you withdraw while the price is far from your entry, the loss becomes permanent.
+</Warning>
+
+## Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `bid` | `OrderSideParams?` | Bid (buy) side - optional |
+| `ask` | `OrderSideParams?` | Ask (sell) side - optional |
+| `owner` | `TransactionSigner` | Position owner (signer) |
+
+Each side (`bid` or `ask`) contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pMin` | `bigint` | Lower price bound |
+| `pMax` | `bigint` | Upper price bound |
+| `amount` | `bigint` | Amount of tokens to deposit |
+| `exponent` | `number` | Density curve (0=uniform, 1=linear, 2+=concentrated) |
+
+## When to Use CLMM
+
+**Good for:**
+- Earning passive fee income
+- Market making without active management
+- Tokens you're happy to hold either way
+
+**Not ideal for:**
+- Tokens you only want to hold one-sided
+- Highly volatile pairs (high IL risk)
+- Short-term speculation

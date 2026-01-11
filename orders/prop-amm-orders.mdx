@@ -1,31 +1,42 @@
 ---
 title: PropAMM Orders
-description: 'Slot-scoped two-sided orders with zero fees for MEV protection'
+description: 'Slot-scoped two-sided orders with zero fees for ultra-competitive spreads'
 ---
 
 # PropAMM Orders
 
-Proportional AMM orders are slot-scoped, two-sided liquidity positions with **zero fees**, designed for MEV-resistant trading.
+Proportional AMM orders are slot-scoped, two-sided liquidity positions with **zero fees**, designed for **ultra-tight spreads** and high-fidelity trading.
 
 ## Overview
 
-PropAMM orders are:
+PropAMM orders enable the tightest spreads on Braid:
+
+- **Zero trading fees**: No fee overhead means spreads can be tighter
+- **Slot-scoped**: Valid only for the current slot (~400ms), reducing adverse selection risk
 - **Two-sided**: Place bid AND ask simultaneously around a price range
-- Valid only for the current slot (~400ms)
-- **Zero trading fees** (no base fee, no slot fee)
-- Designed to discourage front-running through slot-scoping
+- **High-fidelity execution**: Traders get prices very close to true market value
 
-## Zero Fee Design
+## Why Zero Fees?
 
-Unlike CLMM and Limit orders which charge trading fees, PropAMM orders have **no fees**:
+The zero-fee design is the key to competitive spreads:
 
-| Order Type | Fee |
-|------------|-----|
-| CLMM | `clmm_fee_bps` (typically 30 bps) |
-| Limit | `limit_fee_bps` (typically 20 bps) |
-| **PropAMM** | **0 bps (zero fees)** |
+| Order Type | Fee | Spread Impact |
+|------------|-----|---------------|
+| CLMM | `clmm_fee_bps` (typically 30 bps) | Fee adds to effective spread |
+| Limit | `limit_fee_bps` (typically 20 bps) | Fee adds to effective spread |
+| **PropAMM** | **0 bps** | **Spread is pure bid-ask** |
 
-The zero-fee design compensates makers for the extremely short order lifetime (~1 slot).
+With zero fees, a maker quoting 1bp wide is actually 1bp wide—not 1bp + 20-30bp in fees.
+
+## Why Slot-Scoping?
+
+Slot-scoping (~400ms validity) lets makers quote tighter because:
+
+1. **Reduced adverse selection**: Less time for prices to move against you
+2. **Lower inventory risk**: Short exposure window
+3. **Confident pricing**: Quote based on current market conditions, not future uncertainty
+
+This is the same reason traditional market makers quote tighter for immediate-or-cancel orders vs. resting orders.
 
 ## Place Order
 
@@ -35,6 +46,7 @@ PropAMM orders place liquidity on both sides of the orderbook:
 const tx = await market.placePropOrder({
   pMin: 148_000_000n,      // Lower price bound
   pMax: 152_000_000n,      // Upper price bound
+  exponent: 0,             // 0=uniform, 1=linear, 2+=concentrated
   amount: 10_000_000_000n, // Liquidity amount
   owner: wallet.publicKey,
 });
@@ -48,21 +60,22 @@ This creates both a bid and ask within the price range, valid for the current sl
 |-----------|------|-------------|
 | `pMin` | `bigint` | Lower price bound |
 | `pMax` | `bigint` | Upper price bound |
+| `exponent` | `number` | Density curve exponent (0=uniform, 1=linear, 2+=concentrated) |
 | `amount` | `bigint` | Total liquidity amount |
 | `owner` | `PublicKey` | Position owner (signer) |
 
-## MEV Protection
-
-PropAMM orders protect against front-running because:
-
-1. **Slot-scoped validity**: Orders expire after ~400ms, leaving no time for MEV bots to react
-2. **Two-sided**: Provides liquidity on both sides, harder to exploit directionally
-3. **Zero fees**: No fee advantage to extract
-4. **Private submission**: Best used with Jito bundles to hide orders from mempool
-
 ## Use Cases
 
-- MEV-resistant swaps
-- Time-sensitive market making
-- Large trades that would otherwise be sandwiched
-- High-frequency two-sided liquidity
+- **High-frequency market making**: Quote tight spreads with minimal risk
+- **Programmatic trading**: Bots that need predictable, low-cost execution
+- **Large trades**: Get competitive pricing without fee drag
+- **Latency-sensitive strategies**: Price based on current conditions only
+
+## Best Practices
+
+For tightest execution:
+
+1. **Submit via Jito bundles**: Ensures your order lands in the intended slot
+2. **Quote around mid-market**: Center your pMin/pMax on the current price
+3. **Use appropriate exponent**: Higher exponent = more liquidity concentrated at mid-price
+4. **Monitor slot timing**: Submit early in the slot for best fill probability

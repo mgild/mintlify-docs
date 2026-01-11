@@ -55,19 +55,18 @@ Traditional orderbooks store all orders in one place. This doesn't work on Solan
 ```mermaid
 
 flowchart LR
-    subgraph Traditional["Traditional (doesn't scale)"]
-        T1["ALL ORDERS<br/>(hits size limits)<br/>(slow to search)<br/>(single point of contention)"]
+    subgraph Traditional["Traditional"]
+        T1["ALL ORDERS<br/>hits size limits<br/>slow to search"]
     end
 
     Traditional -->|Sharding| Sharded
 
-    subgraph Sharded["Sharded (unlimited scale)"]
-        S0["Shard 0<br/>$0-$100<br/>~100 orders"]
-        S1["Shard 1<br/>$100-$200<br/>~100 orders"]
-        S2["Shard 2<br/>$200-$300<br/>~100 orders"]
+    subgraph Sharded["Sharded"]
+        S0["Shard 0<br/>$0-$100"]
+        S1["Shard 1<br/>$100-$200"]
+        S2["Shard 2<br/>$200-$300"]
         S0 <--> S1 <--> S2
     end
-
     style T1 fill:#21252b,stroke:#e06c75,color:#abb2bf
     style S0 fill:#21252b,stroke:#61afef,color:#abb2bf
     style S1 fill:#21252b,stroke:#c678dd,color:#abb2bf
@@ -91,16 +90,16 @@ Each market has three types of orderbooks:
 
 graph TB
     subgraph Market["MARKET"]
-        subgraph CLMM["CLMM Orderbook (concentrated liquidity)"]
+        subgraph CLMM["CLMM Orderbook"]
             C0["Shard 0<br/>$0-100"] <--> C1["Shard 1<br/>$100-200"] <--> C2["Shard 2<br/>$200-300"]
         end
 
-        subgraph Limit["Limit Orderbook (standard limit orders)"]
+        subgraph Limit["Limit Orderbook"]
             L0["Shard 0<br/>$0-100"] <--> L1["Shard 1<br/>$100-200"] <--> L2["Shard 2<br/>$200-300"]
         end
 
-        subgraph PropAMM["PropAMM Orders (MEV protection)"]
-            PA["Single Account<br/>(slot-scoped, orders expire quickly)"]
+        subgraph PropAMM["PropAMM Orders"]
+            PA["Single Account<br/>slot-scoped"]
         end
     end
 
@@ -189,16 +188,15 @@ When a shard exceeds 75% capacity and neighbors can't help:
 
 flowchart LR
     subgraph Before
-        B0["Shard 0 (95%)<br/>$0-$200<br/>[190 orders]"]
+        B0["Shard 0 - 95%<br/>$0-$200<br/>190 orders"]
     end
 
     Before -->|Split| After
 
-    subgraph After["After (New shard created!)"]
-        A0["Shard 0<br/>$0-$100<br/>[95 orders]"]
-        A1["Shard 1<br/>$100-$200<br/>[95 orders]"]
+    subgraph After
+        A0["Shard 0<br/>$0-$100<br/>95 orders"]
+        A1["Shard 1<br/>$100-$200<br/>95 orders"]
     end
-
     style B0 fill:#21252b,stroke:#e06c75,color:#abb2bf
     style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
     style A1 fill:#21252b,stroke:#98c379,color:#abb2bf
@@ -212,16 +210,15 @@ When a shard drops below 25% and its neighbor is also sparse:
 
 flowchart LR
     subgraph Before
-        B0["Shard 0 (15%)<br/>[30 orders]"]
-        B1["Shard 1 (10%)<br/>[20 orders]"]
+        B0["Shard 0 - 15%<br/>30 orders"]
+        B1["Shard 1 - 10%<br/>20 orders"]
     end
 
     Before -->|Merge| After
 
-    subgraph After["After (Shard 1 deleted!)"]
-        A0["Shard 0 (25%)<br/>[50 orders]"]
+    subgraph After
+        A0["Shard 0 - 25%<br/>50 orders"]
     end
-
     style B0 fill:#21252b,stroke:#e5c07b,color:#abb2bf
     style B1 fill:#21252b,stroke:#e5c07b,color:#abb2bf
     style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
@@ -235,17 +232,16 @@ When one shard is sparse but its neighbor has room:
 
 flowchart LR
     subgraph Before
-        B0["Shard 0 (20%)"]
-        B1["Shard 1 (50%)"]
+        B0["Shard 0 - 20%"]
+        B1["Shard 1 - 50%"]
     end
 
     Before -->|Rebalance| After
 
-    subgraph After["After (Orders moved to balance)"]
-        A0["Shard 0 (35%)"]
-        A1["Shard 1 (35%)"]
+    subgraph After
+        A0["Shard 0 - 35%"]
+        A1["Shard 1 - 35%"]
     end
-
     style B0 fill:#21252b,stroke:#e5c07b,color:#abb2bf
     style B1 fill:#21252b,stroke:#61afef,color:#abb2bf
     style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
@@ -394,7 +390,6 @@ struct LimitOrder {
 
     // Metadata
     created_at: i64,             // Unix timestamp
-    expires_at: i64,             // 0 = never expires
     order_id: u64,               // Unique ID within shard
     side: u8,                    // 0 = bid, 1 = ask
 }
@@ -426,7 +421,7 @@ This allows instant side identification: `is_bid = (idx % 2 == 1)`.
 | Threshold | Condition | Action | Why |
 |-----------|-----------|--------|-----|
 | 75% | Shard full, neighbors full | Split | Create capacity |
-| 25% | Shard sparse, neighbor sparse | Merge | Reclaim rent |
+| 25% | Shard sparse, neighbor sparse | Merge | Prevent sparseness |
 | 25% | Shard sparse, neighbor has room | Rebalance | Even distribution |
 | 50% gap | Between split/merge | Hysteresis | Prevent thrashing |
 
@@ -449,19 +444,9 @@ This allows instant side identification: `is_bid = (idx % 2 == 1)`.
 | Component | Size | Notes |
 |-----------|------|-------|
 | Shard header | ~500 bytes | Fixed overhead per shard |
-| Limit order | 88 bytes | Including tree node |
-| CLMM order | 96 bytes | Including density curve data |
+| Limit order | 88 bytes | Including tree node and density curve |
+| CLMM order | 96 bytes | Including tree node and density curve |
 | PropAMM order | 104 bytes | Including slot data |
 | Typical shard | ~10KB | ~100 orders per shard |
-
-### Compute Units (CU)
-
-| Operation | Typical CU | Notes |
-|-----------|------------|-------|
-| Load shard | ~5,000 | Deserialization |
-| Place order | ~15,000 | With tree rebalance |
-| Cancel order | ~12,000 | With tree rebalance |
-| Take (per fill) | ~8,000 | Per order touched |
-| Shard split | ~50,000 | Heavy operation (cranked) |
 
 </Accordion>

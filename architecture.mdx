@@ -118,10 +118,10 @@ The matching engine uses a **greedy multi-source routing algorithm**:
 
 flowchart TB
     Start([amount_remaining > 0?]) --> |Yes| Step1
-    Step1[1. Get best order from PropAMM, CLMM, Limit] --> Step2
-    Step2[2. Select source with best price] --> Step3
-    Step3[3. Fill from that source] --> Step4
-    Step4[4. Update totals] --> Start
+    Step1[Get best order from PropAMM, CLMM, Limit] --> Step2
+    Step2[Select source with best price] --> Step3
+    Step3[Fill from that source] --> Step4
+    Step4[Update totals] --> Start
     Start --> |No| Done([Complete])
 
     style Start fill:#21252b,stroke:#e5c07b,color:#abb2bf
@@ -175,4 +175,4 @@ Shards require permissionless maintenance via **crank** instructions:
 | `CrankMerge` | Shard &lt;25% full, neighbor sparse | Combine shards, reclaim account |
 | `CrankRebalance` | Shard &lt;25% full, neighbor has room | Move orders to neighbor |
 
-Crankers are incentivized via protocol rewards (TODO).
+Shard balancing is handled automatically during CLMM/limit order placement or during take operations, making external cranking purely optional.

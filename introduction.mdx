@@ -89,6 +89,29 @@ Choosing one means fragmenting liquidity. Braid solves this by **combining both 
 
 ---
 
+## The Key Innovation: Density Orders
+
+Every order type in Braid - whether Limit, CLMM, or PropAMM - is powered by the same underlying primitive: **density orders**.
+
+A density order defines:
+- **Price range**: The bounds where your order is active (`pMin` to `pMax`)
+- **Distribution curve**: How your liquidity is allocated within that range
+
+This single abstraction replaces the patchwork of different order types found in traditional exchanges:
+
+| Traditional | Braid Density Order |
+|-------------|---------------------|
+| Limit order at $100 | Range $100-$100, uniform curve |
+| Concentrated LP $90-$110 | Range $90-$110, uniform curve |
+| Graduated buy ladder | Range $80-$100, linear curve |
+| Custom AMM curve | Range + custom density function |
+
+**One primitive. Infinite expressiveness.** Whether you're placing a simple limit order or deploying a sophisticated market-making strategy, you're using the same underlying mechanism - just with different parameters.
+
+This unification isn't just elegant - it enables Braid's matching engine to efficiently route trades across all liquidity sources, finding the best execution without the fragmentation that plagues multi-venue markets.
+
+---
+
 ## How It Works
 
 When you swap on Braid, the matching engine finds the best prices across all sources:

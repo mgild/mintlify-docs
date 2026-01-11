@@ -19,7 +19,6 @@ const tx = await Market.swapIx({
   side: Side.Ask,
   amount: 1_000_000n,       // Input amount (quote tokens)
   minOut: 950_000n,         // Minimum output (slippage protection)
-  limitPrice: 0n,           // 0 = no price limit (market order)
   taker: wallet.publicKey,
 });
 
@@ -33,7 +32,6 @@ const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
 | `side` | `Side` | `Ask` (buy base) or `Bid` (sell base) |
 | `amount` | `bigint` | Input amount to swap |
 | `minOut` | `bigint` | Minimum output (reverts if not met) |
-| `limitPrice` | `bigint` | Price limit (0 = no limit) |
 | `taker` | `PublicKey` | Taker wallet (signer) |
 | `minOrderBips` | `number` | Skip orders below this % (optional) |
 | `maxOrders` | `number` | Max orders to touch (optional) |
@@ -57,22 +55,6 @@ const tx = await Market.swapIx({
   side: Side.Ask,
   amount: 1_000_000n,
   minOut,
-  limitPrice: 0n,
-  taker: wallet.publicKey,
-});
-```
-
-## Limit Orders (IOC)
-
-Set a `limitPrice` to only fill at acceptable prices:
-
-```typescript
-// Only buy if price is at or below 100
-const tx = await Market.swapIx({
-  side: Side.Ask,
-  amount: 1_000_000n,
-  minOut: 0n,
-  limitPrice: 100_000_000n,  // Max price willing to pay
   taker: wallet.publicKey,
 });
 ```

@@ -14,6 +14,7 @@ const tx = await market.placeLimitOrder({
   side: Side.Bid,
   pMin: 95_000_000n,      // Lower price bound
   pMax: 100_000_000n,     // Upper price bound
+  exponent: 0,            // 0=uniform, 1=linear, 2+=concentrated
   amount: 1_000_000n,     // Amount in base units
   owner: wallet.publicKey,
 });
@@ -30,6 +31,7 @@ const tx = await market.placeClmmPosition({
   side: Side.Ask,
   pMin: 95_000_000n,      // Lower price bound
   pMax: 105_000_000n,     // Upper price bound
+  exponent: 0,            // 0=uniform, 1=linear, 2+=concentrated
   amount: 10_000_000n,    // Liquidity amount
   owner: wallet.publicKey,
 });
@@ -85,6 +87,7 @@ for (const order of userOrders) {
 | `side` | `Side` | `Bid` or `Ask` |
 | `pMin` | `bigint` | Lower price bound |
 | `pMax` | `bigint` | Upper price bound |
+| `exponent` | `number` | Density curve exponent (0=uniform, 1=linear, 2+=concentrated) |
 | `amount` | `bigint` | Order size in base units |
 | `owner` | `PublicKey` | Order owner (signer) |
 
@@ -95,5 +98,6 @@ for (const order of userOrders) {
 | `side` | `Side` | Primary side (`Bid` or `Ask`) |
 | `pMin` | `bigint` | Lower price bound |
 | `pMax` | `bigint` | Upper price bound |
+| `exponent` | `number` | Density curve exponent (0=uniform, 1=linear, 2+=concentrated) |
 | `amount` | `bigint` | Liquidity amount |
 | `owner` | `PublicKey` | Position owner (signer) |

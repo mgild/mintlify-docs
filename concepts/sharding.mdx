@@ -52,12 +52,12 @@ flowchart LR
 
 ## Real-World Analogy
 
-Think of sharding like a library organizing books:
+Think of sharding like filing cabinets for invoices:
 
-- **Without sharding**: All books in one giant pile. Finding "Programming in Rust" means searching through everything.
-- **With sharding**: Books organized by category. Programming books are in Section C, shelves 10-15. You only search there.
+- **Without sharding**: All invoices in one massive drawer. Finding invoices for $100-$200 means flipping through thousands of documents.
+- **With sharding**: Separate drawers labeled by amount range. The "$100-$200" drawer only has invoices in that range.
 
-Braid's shards are like library sections - each handles a specific "category" (price range) of orders.
+When you place an order at $150, Braid knows exactly which "drawer" (shard) to put it in. When filling orders, it only opens the drawers containing relevant prices.
 
 ## Shard Structure
 
@@ -100,13 +100,19 @@ This allows efficient traversal from best price outward for each side:
 
 flowchart LR
     subgraph BidChain["Bid Chain (high→low prices)"]
+        BidSpacer[ ]
         B0["Shard 2<br/>$200-300<br/>Best bids"] --> B1["Shard 1<br/>$100-200"] --> B2["Shard 0<br/>$0-100"]
+        BidSpacer --> B0
     end
 
     subgraph AskChain["Ask Chain (low→high prices)"]
+        AskSpacer[ ]
         A0["Shard 0<br/>$0-100<br/>Best asks"] --> A1["Shard 1<br/>$100-200"] --> A2["Shard 2<br/>$200-300"]
+        AskSpacer --> A0
     end
 
+    style BidSpacer fill:transparent,stroke:transparent,color:transparent
+    style AskSpacer fill:transparent,stroke:transparent,color:transparent
     style B0 fill:#21252b,stroke:#98c379,color:#abb2bf
     style B1 fill:#21252b,stroke:#61afef,color:#abb2bf
     style B2 fill:#21252b,stroke:#c678dd,color:#abb2bf
@@ -123,17 +129,7 @@ flowchart LR
 
 When you execute a swap, the matching engine needs to find the best prices. Here's how:
 
-### Step 1: Find the Right Shards
-
-The SDK identifies which shards contain prices near the current market:
-
-```typescript
-// The SDK handles this automatically
-const shards = await market.getShardsForSwap(side, amount);
-// Returns shards along the appropriate chain (bid chain for sells, ask chain for buys)
-```
-
-### Step 2: Build the Transaction
+### Step 1: Build the Transaction
 
 The transaction includes only the relevant shards (usually 3 per orderbook type):
 
@@ -155,7 +151,7 @@ graph TB
     style PropAMM fill:#21252b,stroke:#e5c07b,color:#abb2bf
 ```
 
-### Step 3: Match Across Shards
+### Step 2: Match Across Shards
 
 The matching engine finds the best price across all loaded shards:
 
@@ -180,23 +176,28 @@ When a shard exceeds **75% capacity** and its neighbors are also full:
 
 flowchart LR
     subgraph Before["Before (Shard 80% full)"]
+        BeforeSpacer[ ]
         B0["Shard 0<br/>$0-$200<br/>[160 orders]"]
+        BeforeSpacer --> B0
     end
 
     Before -->|Split| After
 
     subgraph After["After"]
+        AfterSpacer[ ]
         A0["Shard 0<br/>$0-$100<br/>[80 orders]"]
         A1["Shard 1<br/>$100-$200<br/>[80 orders]"]
+        AfterSpacer --> A0
     end
 
+    style BeforeSpacer fill:transparent,stroke:transparent,color:transparent
+    style AfterSpacer fill:transparent,stroke:transparent,color:transparent
     style B0 fill:#21252b,stroke:#e06c75,color:#abb2bf
     style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
     style A1 fill:#21252b,stroke:#98c379,color:#abb2bf
 ```
 
-Orders moved: High-price orders migrate to new shard
-Rent paid: Someone pays ~0.01 SOL to create new account
+High-price orders migrate to the new shard.
 
 ### Merge: When Two Shards Are Too Empty
 
@@ -206,16 +207,22 @@ When two adjacent shards are both below **25% capacity**:
 
 flowchart LR
     subgraph Before
+        BeforeSpacer2[ ]
         B0["Shard 0 (15%)<br/>[30 orders]"]
         B1["Shard 1 (10%)<br/>[20 orders]"]
+        BeforeSpacer2 --> B0
     end
 
     Before -->|Merge| After
 
-    subgraph After["After (Shard 1 deleted,<br/>rent reclaimed!)"]
+    subgraph After["After (Shard 1 deleted)"]
+        AfterSpacer2[ ]
         A0["Shard 0 (25%)<br/>[50 orders]"]
+        AfterSpacer2 --> A0
     end
 
+    style BeforeSpacer2 fill:transparent,stroke:transparent,color:transparent
+    style AfterSpacer2 fill:transparent,stroke:transparent,color:transparent
     style B0 fill:#21252b,stroke:#e5c07b,color:#abb2bf
     style B1 fill:#21252b,stroke:#e5c07b,color:#abb2bf
     style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
@@ -229,17 +236,23 @@ When one shard is sparse but its neighbor has room:
 
 flowchart LR
     subgraph Before
+        BeforeSpacer3[ ]
         B0["Shard 0 (20%)"]
         B1["Shard 1 (60%)"]
+        BeforeSpacer3 --> B0
     end
 
     Before -->|"Rebalance<br/>(Orders migrate)"| After
 
     subgraph After
+        AfterSpacer3[ ]
         A0["Shard 0 (40%)"]
         A1["Shard 1 (40%)"]
+        AfterSpacer3 --> A0
     end
 
+    style BeforeSpacer3 fill:transparent,stroke:transparent,color:transparent
+    style AfterSpacer3 fill:transparent,stroke:transparent,color:transparent
     style B0 fill:#21252b,stroke:#e5c07b,color:#abb2bf
     style B1 fill:#21252b,stroke:#61afef,color:#abb2bf
     style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
@@ -255,12 +268,9 @@ To prevent constant splitting and merging, Braid uses **hysteresis** - a buffer 
 ```mermaid
 
 flowchart LR
-    subgraph Fill["Fill Level 0% ────────────────────────────────────── 100%"]
-        direction LR
-        Merge["MERGE/REBAL<br/>0-25%"]
-        Stable["STABLE ZONE<br/>(no action)<br/>25-75%"]
-        Split["SPLIT<br/>75-100%"]
-    end
+    Merge["MERGE/REBAL<br/>0-25%"]
+    Stable["STABLE ZONE<br/>(no action)<br/>25-75%"]
+    Split["SPLIT<br/>75-100%"]
 
     Merge --> Stable --> Split
 
@@ -351,65 +361,22 @@ This allows O(1) lookup of:
 
 Shard rebalancing is triggered by permissionless "crank" instructions:
 
-| Instruction | When to Call | Reward |
-|-------------|--------------|--------|
-| `CrankSplit` | Shard >75% full | Rent subsidy |
-| `CrankMerge` | Adjacent shards &lt;25% each | Rent reclaim |
-| `CrankRebalance` | One shard &lt;25%, neighbor has room | None |
+| Instruction | When to Call |
+|-------------|--------------|
+| `CrankSplit` | Shard >75% full |
+| `CrankMerge` | Adjacent shards &lt;25% each |
+| `CrankRebalance` | One shard &lt;25%, neighbor has room |
 
 ### Example: Calling CrankSplit
 
 ```typescript
-import { crankSplit } from '@braid/client';
-
 // Anyone can call this - it's permissionless
-const tx = await crankSplit({
-  market: marketAddress,
+const tx = await market.crankSplit({
   sourceShard: overloadedShardAddress,
-  // New shard will be created automatically
 });
 
 await sendAndConfirmTransaction(connection, tx, [payer]);
 ```
 
-### Cranker Economics
-
-- **Split**: Cranker pays ~0.01 SOL rent for new account
-- **Merge**: Cranker receives ~0.01 SOL rent from closed account
-- **Rebalance**: No rent change, but helps market health
-
-Most DEX integrators run cranker bots to keep shards balanced.
-
 </Accordion>
 
-<Accordion title="Performance Characteristics">
-
-### Shard Sizing
-
-| Metric | Typical Value | Notes |
-|--------|---------------|-------|
-| Orders per shard | 100-200 | Configurable at market creation |
-| Shard account size | ~10KB | Depends on order count |
-| Shards per market | 3-20 | Depends on price distribution |
-
-### Compute Units
-
-| Operation | CU Cost | Notes |
-|-----------|---------|-------|
-| Load shard | ~5,000 | Deserialization |
-| Find shard for price | ~500 per shard | Linear scan |
-| Cross-shard match | ~8,000 per fill | Plus order updates |
-| Split shard | ~50,000 | Heavy, done via crank |
-| Merge shards | ~40,000 | Heavy, done via crank |
-
-### Transaction Limits
-
-With sharding, typical transactions use:
-- **~3 CLMM shards** (along the side-specific chain)
-- **~3 Limit shards** (along the side-specific chain)
-- **1 PropAMM account**
-- **~10 other accounts** (market, vaults, mints, etc.)
-
-**Total: ~20 accounts**, well under Solana's 64-account limit.
-
-</Accordion>

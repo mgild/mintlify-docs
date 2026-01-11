@@ -21,6 +21,7 @@ Limit orders specify:
 struct LimitOrder {
     p_min: u64,              // Lower price bound
     p_max: u64,              // Upper price bound
+    exponent: u8,            // Density curve exponent (0=uniform, 1=linear, 2+=concentrated)
     amount_remaining: u64,   // Unfilled amount
     full_amount: u64,        // Original order size
     owner: Address,          // Order owner
@@ -38,6 +39,7 @@ struct LimitOrder {
       side: Side.Bid,
       pMin: 95_000_000n,     // Lower price bound
       pMax: 100_000_000n,    // Upper price bound
+      exponent: 0,           // 0=uniform, 1=linear, 2+=concentrated
       amount: 1_000_000n,
       owner: wallet.publicKey,
     });
@@ -76,20 +78,22 @@ The price range determines where your order is active:
 - **Wide range** (pMin far from pMax): More flexibility, may fill across a range of prices
 
 ```typescript
-// Tight range: Buy around $100
+// Tight range: Buy around $100 with uniform distribution
 const tx = await market.placeLimitOrder({
   side: Side.Bid,
   pMin: 99_000_000n,
   pMax: 101_000_000n,
+  exponent: 0,            // Uniform across range
   amount: 10_000_000n,
   owner: wallet.publicKey,
 });
 
-// Wide range: Buy anywhere from $95-$105
+// Wide range: Buy more aggressively at lower prices
 const tx = await market.placeLimitOrder({
   side: Side.Bid,
   pMin: 95_000_000n,
   pMax: 105_000_000n,
+  exponent: 1,            // Linear increase toward edge
   amount: 10_000_000n,
   owner: wallet.publicKey,
 });
