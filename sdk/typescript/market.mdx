@@ -1,0 +1,87 @@
+---
+title: Market
+description: 'Load and query market state'
+---
+
+# Market Operations
+
+## Load a Market
+
+```typescript
+import { Market } from '@braid/client';
+
+const market = await Market.load(connection, marketAddress);
+```
+
+## Market Properties
+
+```typescript
+// Token mints
+market.mintA        // Base token mint
+market.mintB        // Quote token mint
+
+// Vaults
+market.vaultA       // Base token vault
+market.vaultB       // Quote token vault
+
+// Configuration
+market.clmmFeeBps   // CLMM taker fee (basis points)
+market.limitFeeBps  // Limit order taker fee
+market.isPaused     // Whether trading is paused
+```
+
+## Fetch Orderbook
+
+```typescript
+// Fetch limit order shards
+const limitShards = await market.limitBids.fetchAllShards();
+const limitOrderbook = limitShards.toOrderbook();
+
+// Iterate through bids (highest price first)
+for (const bid of limitOrderbook.iterateBids()) {
+  console.log(`Bid: ${bid.base.amountRemaining} @ ${bid.base.pMin}`);
+}
+
+// Fetch asks
+const askShards = await market.limitAsks.fetchAllShards();
+const askOrderbook = askShards.toOrderbook();
+
+for (const ask of askOrderbook.iterateAsks()) {
+  console.log(`Ask: ${ask.base.amountRemaining} @ ${ask.base.pMin}`);
+}
+
+// Fetch CLMM positions
+const clmmShards = await market.clmmBids.fetchAllShards();
+const clmmOrderbook = clmmShards.toOrderbook();
+
+for (const position of clmmOrderbook.iterateBids()) {
+  console.log(`CLMM: ${position.base.liquidity} in range`);
+}
+```
+
+## Find Markets
+
+```typescript
+import { findMarkets } from '@braid/client';
+
+// Find all markets for a token pair
+const markets = await findMarkets(connection, {
+  mintA: usdcMint,
+  mintB: solMint,
+});
+
+// Find market by address
+const market = await Market.load(connection, marketAddress);
+```
+
+## Derive Market Address
+
+```typescript
+import { Market } from '@braid/client';
+
+const [marketPda] = Market.deriveAddress(
+  mintA,
+  mintB,
+  seed,  // 8-byte seed for uniqueness
+);
+```

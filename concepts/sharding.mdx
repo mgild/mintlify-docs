@@ -1,0 +1,415 @@
+---
+title: Sharding
+description: 'How Braid scales with sharded orderbooks'
+---
+
+# Sharding
+
+Sharding is the key innovation that allows Braid to scale beyond the limits of a single Solana account. This page explains why sharding is necessary, how it works, and what happens behind the scenes.
+
+## The Problem: Blockchain Limits
+
+Imagine trying to run the New York Stock Exchange on a single spreadsheet. That spreadsheet would need to hold millions of orders, update instantly, and never crash. That's essentially what on-chain orderbooks face on Solana.
+
+### Solana's Constraints
+
+| Constraint | Limit | What It Means |
+|------------|-------|---------------|
+| **Account size** | 10 MB | A single account can hold ~100,000 orders max |
+| **Transaction accounts** | 64 | A transaction can only read/write 64 accounts |
+| **Compute units** | 1.4M per tx | Complex operations can run out of "gas" |
+| **Lock contention** | 1 writer | Only one transaction can modify an account at a time |
+
+A busy market like SOL/USDC might need to handle millions of orders across thousands of price levels. A single account simply can't do this.
+
+## The Solution: Sharding
+
+Instead of one giant orderbook, Braid splits orders across multiple accounts called "shards", each covering a specific price range:
+
+```mermaid
+
+flowchart LR
+    T1["One Big Orderbook<br/>All orders $0-$1000<br/>Hits size limits!"]
+
+    T1 -->|Sharding| S0
+
+    S0["Shard 0<br/>$0-100"] <--> S1["Shard 1<br/>$100-200"] <--> S2["Shard 2<br/>$200-300"]
+
+    style T1 fill:#21252b,stroke:#e06c75,color:#abb2bf
+    style S0 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style S1 fill:#21252b,stroke:#c678dd,color:#abb2bf
+    style S2 fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+### How It Helps
+
+| Problem | How Sharding Solves It |
+|---------|------------------------|
+| **Size limits** | Each shard is small (~10KB), add more as needed |
+| **Account limits** | Only load shards you need (usually 3-6) |
+| **Compute limits** | Smaller data = faster processing |
+| **Lock contention** | Different price ranges can update in parallel |
+
+## Real-World Analogy
+
+Think of sharding like a library organizing books:
+
+- **Without sharding**: All books in one giant pile. Finding "Programming in Rust" means searching through everything.
+- **With sharding**: Books organized by category. Programming books are in Section C, shelves 10-15. You only search there.
+
+Braid's shards are like library sections - each handles a specific "category" (price range) of orders.
+
+## Shard Structure
+
+Each shard is a Solana account containing:
+
+```mermaid
+
+graph TB
+    subgraph Shard["SHARD ACCOUNT"]
+        subgraph Header["Header"]
+            H1["Price Range: $100 - $200"]
+            H2["Side-Specific Chain Pointers<br/>(nextBidsShard, nextAsksShard)"]
+            H3["Best Bid: #42 @ $199.50"]
+            H4["Best Ask: #17 @ $100.25"]
+            H5["Counts: 156 bids, 89 asks"]
+            H1 --- H2 --- H3 --- H4 --- H5
+        end
+
+        subgraph Orders["Orders Array"]
+            O1["Order 1"] --- O2["Order 2"] --- O3["..."] --- ON["Order N"]
+        end
+    end
+
+    Header --> Orders
+
+    style Header fill:#21252b,stroke:#61afef,color:#abb2bf
+    style Orders fill:#21252b,stroke:#c678dd,color:#abb2bf
+```
+
+### Side-Specific Shard Chains
+
+Shards use **side-specific navigation** - each side (bids/asks) has its own traversal chain:
+
+- **nextBidsShard**: Points toward lower prices (worse bids)
+- **nextAsksShard**: Points toward higher prices (worse asks)
+
+This allows efficient traversal from best price outward for each side:
+
+```mermaid
+
+flowchart LR
+    subgraph BidChain["Bid Chain (high→low prices)"]
+        B0["Shard 2<br/>$200-300<br/>Best bids"] --> B1["Shard 1<br/>$100-200"] --> B2["Shard 0<br/>$0-100"]
+    end
+
+    subgraph AskChain["Ask Chain (low→high prices)"]
+        A0["Shard 0<br/>$0-100<br/>Best asks"] --> A1["Shard 1<br/>$100-200"] --> A2["Shard 2<br/>$200-300"]
+    end
+
+    style B0 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style B1 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style B2 fill:#21252b,stroke:#c678dd,color:#abb2bf
+    style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style A1 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style A2 fill:#21252b,stroke:#c678dd,color:#abb2bf
+```
+
+<Note>
+**Same shards, different chains**: The same physical shards are traversed in different directions depending on whether you're matching bids or asks. The bid head and ask head may even point to the same shard in tight markets.
+</Note>
+
+## How Trades Work With Shards
+
+When you execute a swap, the matching engine needs to find the best prices. Here's how:
+
+### Step 1: Find the Right Shards
+
+The SDK identifies which shards contain prices near the current market:
+
+```typescript
+// The SDK handles this automatically
+const shards = await market.getShardsForSwap(side, amount);
+// Returns shards along the appropriate chain (bid chain for sells, ask chain for buys)
+```
+
+### Step 2: Build the Transaction
+
+The transaction includes only the relevant shards (usually 3 per orderbook type):
+
+```mermaid
+
+graph TB
+    TX["Transaction Accounts<br/>(~20 total, well under 64 limit)"]
+    TX --> M["Market account"]
+    TX --> CLMM["CLMM Shards: [chain shards]<br/>(~3 accounts)"]
+    TX --> Limit["Limit Shards: [chain shards]<br/>(~3 accounts)"]
+    TX --> PropAMM["PropAMM Orders (1 account)"]
+    TX --> Tokens["Token accounts..."]
+    TX --> Programs["Programs..."]
+
+    style TX fill:#21252b,stroke:#61afef,color:#abb2bf
+    style M fill:#21252b,stroke:#c678dd,color:#abb2bf
+    style CLMM fill:#21252b,stroke:#98c379,color:#abb2bf
+    style Limit fill:#21252b,stroke:#98c379,color:#abb2bf
+    style PropAMM fill:#21252b,stroke:#e5c07b,color:#abb2bf
+```
+
+### Step 3: Match Across Shards
+
+The matching engine finds the best price across all loaded shards:
+
+```
+Query best prices:
+  CLMM Shard 1: Best ask = $150.05
+  Limit Shard 1: Best ask = $150.12
+  PropAMM: Best ask = $150.08
+
+Winner: CLMM @ $150.05 → Fill from CLMM first
+```
+
+## Automatic Balancing
+
+Shards automatically grow, shrink, split, and merge based on how many orders they contain. This happens via "crank" transactions that anyone can submit.
+
+### Split: When a Shard Gets Too Full
+
+When a shard exceeds **75% capacity** and its neighbors are also full:
+
+```mermaid
+
+flowchart LR
+    subgraph Before["Before (Shard 80% full)"]
+        B0["Shard 0<br/>$0-$200<br/>[160 orders]"]
+    end
+
+    Before -->|Split| After
+
+    subgraph After["After"]
+        A0["Shard 0<br/>$0-$100<br/>[80 orders]"]
+        A1["Shard 1<br/>$100-$200<br/>[80 orders]"]
+    end
+
+    style B0 fill:#21252b,stroke:#e06c75,color:#abb2bf
+    style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style A1 fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+Orders moved: High-price orders migrate to new shard
+Rent paid: Someone pays ~0.01 SOL to create new account
+
+### Merge: When Two Shards Are Too Empty
+
+When two adjacent shards are both below **25% capacity**:
+
+```mermaid
+
+flowchart LR
+    subgraph Before
+        B0["Shard 0 (15%)<br/>[30 orders]"]
+        B1["Shard 1 (10%)<br/>[20 orders]"]
+    end
+
+    Before -->|Merge| After
+
+    subgraph After["After (Shard 1 deleted,<br/>rent reclaimed!)"]
+        A0["Shard 0 (25%)<br/>[50 orders]"]
+    end
+
+    style B0 fill:#21252b,stroke:#e5c07b,color:#abb2bf
+    style B1 fill:#21252b,stroke:#e5c07b,color:#abb2bf
+    style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+### Rebalance: When Shards Are Uneven
+
+When one shard is sparse but its neighbor has room:
+
+```mermaid
+
+flowchart LR
+    subgraph Before
+        B0["Shard 0 (20%)"]
+        B1["Shard 1 (60%)"]
+    end
+
+    Before -->|"Rebalance<br/>(Orders migrate)"| After
+
+    subgraph After
+        A0["Shard 0 (40%)"]
+        A1["Shard 1 (40%)"]
+    end
+
+    style B0 fill:#21252b,stroke:#e5c07b,color:#abb2bf
+    style B1 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style A1 fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+## Hysteresis: Preventing Thrashing
+
+What if a shard has exactly 75% orders? Should it split? What if someone then cancels an order - should it immediately merge?
+
+To prevent constant splitting and merging, Braid uses **hysteresis** - a buffer zone where no action is taken:
+
+```mermaid
+
+flowchart LR
+    subgraph Fill["Fill Level 0% ────────────────────────────────────── 100%"]
+        direction LR
+        Merge["MERGE/REBAL<br/>0-25%"]
+        Stable["STABLE ZONE<br/>(no action)<br/>25-75%"]
+        Split["SPLIT<br/>75-100%"]
+    end
+
+    Merge --> Stable --> Split
+
+    style Merge fill:#21252b,stroke:#e5c07b,color:#abb2bf
+    style Stable fill:#21252b,stroke:#98c379,color:#abb2bf
+    style Split fill:#21252b,stroke:#e06c75,color:#abb2bf
+```
+
+The 50% gap (25% to 75%) means:
+- A shard at 30% won't split, then immediately merge
+- A shard at 70% won't merge, then immediately split
+- Normal order flow doesn't trigger constant rebalancing
+
+---
+
+## Technical Deep Dive
+
+<Accordion title="PDA Seeds and Addressing">
+
+Shard accounts are Program Derived Addresses (PDAs):
+
+```rust
+// CLMM shard seeds
+["clmm_orders", market_pubkey, shard_idx.to_le_bytes()]
+
+// Limit shard seeds
+["limit_orders", market_pubkey, shard_idx.to_le_bytes()]
+
+// PropAMM (not sharded)
+["prop_amm_orders", market_pubkey]
+```
+
+### Finding Shards
+
+To find all shards for a market:
+
+```typescript
+// Option 1: Load from market config
+const market = await Market.load(connection, marketAddress);
+const clmmShards = market.clmmShardManager; // Contains shard addresses
+
+// Option 2: Derive programmatically
+import { PublicKey } from '@solana/web3.js';
+
+function deriveClmmShard(market: PublicKey, shardIdx: number): PublicKey {
+  const [shard] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from('clmm_orders'),
+      market.toBuffer(),
+      Buffer.from(new Uint8Array(new BigUint64Array([BigInt(shardIdx)]).buffer))
+    ],
+    BRAID_PROGRAM_ID
+  );
+  return shard;
+}
+```
+
+</Accordion>
+
+<Accordion title="Shard Manager State">
+
+The Market account contains a ShardManager that tracks all shards:
+
+```rust
+struct ShardManager {
+    // Head of bid chain (highest prices - best bids)
+    bid_head: Address,
+
+    // Head of ask chain (lowest prices - best asks)
+    ask_head: Address,
+
+    // Total number of shards
+    shard_count: u32,
+
+    // Next shard index to use when creating
+    next_shard_idx: u64,
+}
+```
+
+This allows O(1) lookup of:
+- Where to start for best bids (bid_head) or best asks (ask_head)
+- How many shards exist
+- Index for creating new shards
+
+</Accordion>
+
+<Accordion title="Crank Instructions">
+
+Shard rebalancing is triggered by permissionless "crank" instructions:
+
+| Instruction | When to Call | Reward |
+|-------------|--------------|--------|
+| `CrankSplit` | Shard >75% full | Rent subsidy |
+| `CrankMerge` | Adjacent shards &lt;25% each | Rent reclaim |
+| `CrankRebalance` | One shard &lt;25%, neighbor has room | None |
+
+### Example: Calling CrankSplit
+
+```typescript
+import { crankSplit } from '@braid/client';
+
+// Anyone can call this - it's permissionless
+const tx = await crankSplit({
+  market: marketAddress,
+  sourceShard: overloadedShardAddress,
+  // New shard will be created automatically
+});
+
+await sendAndConfirmTransaction(connection, tx, [payer]);
+```
+
+### Cranker Economics
+
+- **Split**: Cranker pays ~0.01 SOL rent for new account
+- **Merge**: Cranker receives ~0.01 SOL rent from closed account
+- **Rebalance**: No rent change, but helps market health
+
+Most DEX integrators run cranker bots to keep shards balanced.
+
+</Accordion>
+
+<Accordion title="Performance Characteristics">
+
+### Shard Sizing
+
+| Metric | Typical Value | Notes |
+|--------|---------------|-------|
+| Orders per shard | 100-200 | Configurable at market creation |
+| Shard account size | ~10KB | Depends on order count |
+| Shards per market | 3-20 | Depends on price distribution |
+
+### Compute Units
+
+| Operation | CU Cost | Notes |
+|-----------|---------|-------|
+| Load shard | ~5,000 | Deserialization |
+| Find shard for price | ~500 per shard | Linear scan |
+| Cross-shard match | ~8,000 per fill | Plus order updates |
+| Split shard | ~50,000 | Heavy, done via crank |
+| Merge shards | ~40,000 | Heavy, done via crank |
+
+### Transaction Limits
+
+With sharding, typical transactions use:
+- **~3 CLMM shards** (along the side-specific chain)
+- **~3 Limit shards** (along the side-specific chain)
+- **1 PropAMM account**
+- **~10 other accounts** (market, vaults, mints, etc.)
+
+**Total: ~20 accounts**, well under Solana's 64-account limit.
+
+</Accordion>

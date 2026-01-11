@@ -1,0 +1,372 @@
+/* Hide mermaid pan/zoom navigation controls - aggressive targeting */
+.mermaid-zoom-controls,
+.mermaid .pan-zoom,
+div[style*="position: absolute"][style*="right"],
+div[style*="position: absolute"][style*="bottom"] {
+  display: none !important;
+}
+
+/* Hide any button grids near mermaid diagrams (but not PDF modal) */
+.mermaid ~ div:has(> button):has(> button + button),
+.mermaid + div:has(> button):has(> button + button) {
+  display: none !important;
+}
+
+/* Target the control panel by structure: grid of buttons */
+div[style*="grid"],
+div[style*="display: grid"] {
+  &:has(button[aria-label]) {
+    display: none !important;
+  }
+}
+
+/* ============================================
+   ONE DARK THEME FOR MERMAID
+   ============================================ */
+
+/* Centering - no background */
+.mermaid {
+  background: transparent !important;
+  border-radius: 0;
+  padding: 16px;
+  display: flex !important;
+  justify-content: center !important;
+}
+
+.mermaid svg {
+  margin: 0 auto !important;
+}
+
+/* Node styling */
+.mermaid .node rect,
+.mermaid .node circle,
+.mermaid .node polygon,
+.mermaid .node path {
+  fill: #21252b !important;
+  stroke: #3e4451 !important;
+  stroke-width: 1px !important;
+}
+
+/* Node text */
+.mermaid .nodeLabel,
+.mermaid .node text,
+.mermaid text {
+  fill: #abb2bf !important;
+  font-family: 'SF Mono', 'Fira Code', monospace !important;
+}
+
+/* Edge/arrow lines */
+.mermaid .edgePath path,
+.mermaid .flowchart-link {
+  stroke: #5c6370 !important;
+  stroke-width: 1.5px !important;
+}
+
+/* Arrow heads */
+.mermaid .arrowheadPath,
+.mermaid marker path {
+  fill: #5c6370 !important;
+  stroke: #5c6370 !important;
+}
+
+/* Edge labels */
+.mermaid .edgeLabel {
+  background: transparent !important;
+  color: #abb2bf !important;
+}
+
+.mermaid .edgeLabel rect {
+  fill: transparent !important;
+  opacity: 0 !important;
+}
+
+/* Subgraph/cluster styling */
+.mermaid .cluster rect {
+  fill: #21252b !important;
+  stroke: #3e4451 !important;
+  stroke-width: 1px !important;
+  rx: 4px !important;
+}
+
+.mermaid .cluster-label text,
+.mermaid .cluster text {
+  fill: #e5c07b !important;
+  font-weight: 600 !important;
+}
+
+/* Accent colors for special nodes */
+.mermaid .node.default > rect,
+.mermaid .node.default > polygon {
+  stroke: #61afef !important;
+}
+
+/* Primary accent - blue */
+.mermaid .flowchart-label text.nodeLabel {
+  fill: #abb2bf !important;
+}
+
+/* Sequence diagram */
+.mermaid .actor {
+  fill: #21252b !important;
+  stroke: #61afef !important;
+}
+
+.mermaid .actor-line {
+  stroke: #3e4451 !important;
+}
+
+.mermaid .messageLine0,
+.mermaid .messageLine1 {
+  stroke: #5c6370 !important;
+}
+
+.mermaid .messageText {
+  fill: #abb2bf !important;
+}
+
+/* State diagram */
+.mermaid .stateGroup rect {
+  fill: #21252b !important;
+  stroke: #3e4451 !important;
+}
+
+/* Class diagram */
+.mermaid .classGroup rect {
+  fill: #21252b !important;
+  stroke: #61afef !important;
+}
+
+/* Labels always on top */
+.mermaid text,
+.mermaid .nodeLabel,
+.mermaid .edgeLabel,
+.mermaid .label {
+  z-index: 10 !important;
+}
+
+.mermaid .node text,
+.mermaid .cluster-label text {
+  dominant-baseline: middle !important;
+  text-anchor: middle !important;
+}
+
+/* Clickable mermaid diagrams */
+.mermaid {
+  cursor: zoom-in;
+  transition: transform 0.2s ease;
+}
+
+.mermaid:hover {
+  transform: scale(1.01);
+}
+
+/* Modal overlay */
+.mermaid-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mermaid-modal-content {
+  width: calc(100vw - 80px);
+  height: calc(100vh - 80px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.mermaid-modal-content svg {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+/* Close hint */
+.mermaid-modal-hint {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  color: #abb2bf;
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+/* ============================================
+   PDF PRINT STYLES - DARK THEME PRESERVED
+   ============================================ */
+
+@media print {
+  /* Hide UI elements only */
+  #pdf-download-btn,
+  [class*="search"],
+  [class*="feedback"],
+  [class*="pagination"],
+  .mermaid-modal-overlay,
+  .mermaid-modal-hint {
+    display: none !important;
+  }
+
+  /* For single-page print: hide nav */
+  body:not(.pdf-all-pages) nav,
+  body:not(.pdf-all-pages) aside,
+  body:not(.pdf-all-pages) [class*="sidebar"],
+  body:not(.pdf-all-pages) [class*="navigation"],
+  body:not(.pdf-all-pages) [class*="toc"],
+  body:not(.pdf-all-pages) [class*="TableOfContents"] {
+    display: none !important;
+  }
+
+  /* Maintain dark theme */
+  body {
+    background: #0d1117 !important;
+    color: #e6edf3 !important;
+    font-size: 11pt !important;
+    line-height: 1.6 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  main,
+  article,
+  [class*="content"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 20px !important;
+    background: #0d1117 !important;
+  }
+
+  /* Typography - maintain dark theme colors */
+  h1, h2, h3, h4, h5, h6 {
+    color: #e6edf3 !important;
+    page-break-after: avoid;
+  }
+
+  h1 {
+    font-size: 22pt !important;
+    border-bottom: 1px solid #30363d !important;
+    padding-bottom: 8px !important;
+  }
+  h2 { font-size: 16pt !important; }
+  h3 { font-size: 13pt !important; }
+
+  p, li, td, th {
+    color: #e6edf3 !important;
+  }
+
+  /* Links - accent color */
+  a {
+    color: #58a6ff !important;
+    text-decoration: none !important;
+  }
+
+  /* Code blocks - dark theme */
+  pre, code {
+    background: #161b22 !important;
+    color: #e6edf3 !important;
+    border: 1px solid #30363d !important;
+    border-radius: 6px !important;
+    font-size: 9pt !important;
+    page-break-inside: avoid;
+  }
+
+  pre {
+    padding: 12px !important;
+  }
+
+  code {
+    padding: 2px 6px !important;
+  }
+
+  /* Mermaid diagrams - maintain dark styling */
+  .mermaid {
+    background: transparent !important;
+    page-break-inside: avoid;
+  }
+
+  /* Tables - dark theme */
+  table {
+    border-collapse: collapse !important;
+    page-break-inside: avoid;
+    background: #161b22 !important;
+  }
+
+  th, td {
+    border: 1px solid #30363d !important;
+    padding: 10px !important;
+    color: #e6edf3 !important;
+  }
+
+  th {
+    background: #21262d !important;
+    font-weight: 600 !important;
+  }
+
+  /* Page breaks for multi-page PDF */
+  .pdf-page-break {
+    page-break-before: always;
+    padding-top: 20px;
+  }
+
+  .pdf-section-title {
+    font-size: 28pt !important;
+    color: #58a6ff !important;
+    margin-bottom: 20px !important;
+  }
+
+  /* Images */
+  img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+
+  /* Blockquotes */
+  blockquote {
+    border-left: 3px solid #58a6ff !important;
+    background: #161b22 !important;
+    padding: 10px 15px !important;
+    margin: 10px 0 !important;
+    color: #8b949e !important;
+  }
+
+  /* Lists */
+  ul, ol {
+    padding-left: 20px !important;
+  }
+
+  li {
+    margin-bottom: 4px !important;
+  }
+
+  /* Strong/bold text */
+  strong, b {
+    color: #f0f6fc !important;
+  }
+
+  /* Inline code highlighting */
+  :not(pre) > code {
+    background: #161b22 !important;
+    color: #79c0ff !important;
+  }
+}

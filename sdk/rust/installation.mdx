@@ -1,0 +1,68 @@
+---
+title: Installation
+description: 'Install the Braid Rust SDK'
+---
+
+# Rust SDK Installation
+
+## Add Dependency
+
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+braid-sdk = "0.1"
+solana-client = "2.0"
+solana-sdk = "2.0"
+```
+
+## Basic Setup
+
+```rust
+use braid_sdk::{Market, BRAID_ID};
+use solana_client::rpc_client::RpcClient;
+use solana_sdk::pubkey::Pubkey;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let rpc = RpcClient::new("https://api.mainnet-beta.solana.com");
+
+    // Load market
+    let market_address: Pubkey = "...".parse()?;
+    let market = Market::new(&rpc, market_address);
+    let data = market.fetch()?;
+
+    println!("Base mint: {}", data.mint_a);
+    println!("Quote mint: {}", data.mint_b);
+
+    Ok(())
+}
+```
+
+## Derive Addresses
+
+```rust
+use braid_sdk::{Market, ClmmOrders, LimitOrders};
+
+// Derive market PDA
+let (market_pda, _bump) = Market::derive_address(
+    &mint_a,
+    &mint_b,
+    &seed,
+    &BRAID_ID,
+);
+
+// Derive shard PDAs
+let clmm_shard = ClmmOrders::derive_address(&market_pda, shard_idx, &BRAID_ID);
+let limit_shard = LimitOrders::derive_address(&market_pda, shard_idx, &BRAID_ID);
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Accounts" icon="database" href="/sdk/rust/accounts">
+    Work with on-chain account data
+  </Card>
+  <Card title="Orderbook" icon="book" href="/sdk/rust/orderbook">
+    Parse and iterate orderbook data
+  </Card>
+</CardGroup>

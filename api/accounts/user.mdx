@@ -1,0 +1,54 @@
+---
+title: User Accounts
+description: 'User and UserOrders account structures'
+---
+
+# User Accounts
+
+## User
+
+Global per-user account tracking order capacity.
+
+```
+Seeds: ["user", owner]
+```
+
+```rust
+struct User {
+    discriminator: [u8; 8],
+    owner: Address,
+    max_orders: u32,
+    current_orders: u32,
+}
+```
+
+## UserOrdersHeader
+
+Per-user per-market order tracking.
+
+```
+Seeds: ["user_orders_header", owner, market]
+```
+
+```rust
+struct UserOrdersHeader {
+    discriminator: [u8; 8],
+    owner: Address,
+    market: Address,
+    order_count: u32,
+    pending_evictions: u32,
+}
+```
+
+### Eviction Tracking
+
+Users cannot place new orders while they have pending evictions:
+
+```rust
+// Check before placing
+if user_orders.pending_evictions > 0 {
+    return Err(BraidError::PendingEvictions);
+}
+```
+
+Users must claim evicted orders before placing new ones.

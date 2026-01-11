@@ -1,0 +1,99 @@
+---
+title: Orders
+description: 'Place and cancel orders'
+---
+
+# Order Operations
+
+## Place a Limit Order
+
+```typescript
+import { Side } from '@braid/client';
+
+const tx = await market.placeLimitOrder({
+  side: Side.Bid,
+  pMin: 95_000_000n,      // Lower price bound
+  pMax: 100_000_000n,     // Upper price bound
+  amount: 1_000_000n,     // Amount in base units
+  owner: wallet.publicKey,
+});
+
+const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
+```
+
+## Place a CLMM Position
+
+```typescript
+import { Side } from '@braid/client';
+
+const tx = await market.placeClmmPosition({
+  side: Side.Ask,
+  pMin: 95_000_000n,      // Lower price bound
+  pMax: 105_000_000n,     // Upper price bound
+  amount: 10_000_000n,    // Liquidity amount
+  owner: wallet.publicKey,
+});
+
+const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
+```
+
+<Note>
+CLMM positions create paired bid+ask orders. When filled on one side, liquidity flips to the other.
+</Note>
+
+## Cancel a Limit Order
+
+```typescript
+const tx = await market.cancelLimitOrder({
+  orderIdx: 42,           // Order index in shard
+  side: Side.Bid,
+  owner: wallet.publicKey,
+});
+
+const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
+```
+
+## Cancel a CLMM Position
+
+```typescript
+const tx = await market.cancelClmmPosition({
+  orderIdx: 42,
+  side: Side.Ask,
+  owner: wallet.publicKey,
+});
+
+// Both the primary and inverse orders are cancelled
+const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
+```
+
+## Get User Orders
+
+```typescript
+const userOrders = await market.getUserOrders(wallet.publicKey);
+
+for (const order of userOrders) {
+  console.log(`Order ${order.idx}: ${order.side} ${order.amount} @ ${order.price}`);
+}
+```
+
+## Order Parameters
+
+### Limit Order
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `side` | `Side` | `Bid` or `Ask` |
+| `pMin` | `bigint` | Lower price bound |
+| `pMax` | `bigint` | Upper price bound |
+| `amount` | `bigint` | Order size in base units |
+| `owner` | `PublicKey` | Order owner (signer) |
+
+### CLMM Position
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `side` | `Side` | Primary side (`Bid` or `Ask`) |
+| `pMin` | `bigint` | Lower price bound |
+| `pMax` | `bigint` | Upper price bound |
+| `amount` | `bigint` | Liquidity amount |
+| `owner` | `PublicKey` | Position owner (signer) |

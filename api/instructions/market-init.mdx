@@ -1,0 +1,54 @@
+---
+title: MarketInit
+description: 'Initialize a new market'
+---
+
+# MarketInit
+
+Creates a new market for a token pair.
+
+## Accounts
+
+| # | Account | Writable | Signer | Description |
+|---|---------|----------|--------|-------------|
+| 0 | Market | Yes | No | Market PDA (created) |
+| 1 | Mint A | No | No | Base token mint |
+| 2 | Mint B | No | No | Quote token mint |
+| 3 | Vault A | Yes | No | Base token vault (created) |
+| 4 | Vault B | Yes | No | Quote token vault (created) |
+| 5 | LP Mint | Yes | No | LP token mint (created) |
+| 6 | Admin | No | Yes | Market admin |
+| 7 | Payer | Yes | Yes | Pays for account creation |
+| 8 | System Program | No | No | System program |
+| 9 | Token Program A | No | No | Token program for mint A |
+| 10 | Token Program B | No | No | Token program for mint B |
+
+## Parameters
+
+```rust
+struct MarketInitParams {
+    seed: [u8; 8],              // Unique market seed
+    clmm_fee_bps: u16,          // CLMM taker fee
+    limit_fee_bps: u16,         // Limit order taker fee
+    protocol_fee_bps: u16,      // Protocol fee share
+    cp_amm_swap_fee_bps: u16,   // CP-AMM swap fee
+}
+```
+
+## Usage
+
+```typescript
+const tx = await marketInit({
+  mintA: baseMint,
+  mintB: quoteMint,
+  seed: new Uint8Array(8),
+  admin: wallet.publicKey,
+  payer: wallet.publicKey,
+  fees: {
+    clmmFeeBps: 30,
+    limitFeeBps: 10,
+    protocolFeeBps: 1000,
+    cpAmmSwapFeeBps: 30,
+  },
+});
+```

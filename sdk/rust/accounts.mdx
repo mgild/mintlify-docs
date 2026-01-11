@@ -1,0 +1,75 @@
+---
+title: Accounts
+description: 'Work with on-chain account data'
+---
+
+# Account Wrappers
+
+The Rust SDK provides type-safe wrappers for all Braid accounts.
+
+## Market
+
+```rust
+use braid_sdk::Market;
+
+let market = Market::new(&rpc, market_address);
+
+// Fetch market data (cached - call reload() to refresh)
+let data = market.fetch()?;
+
+// Access fields
+data.admin
+data.mint_a
+data.mint_b
+data.clmm_fee_bps
+data.is_paused
+
+// Load orderbook
+let orderbook = market.load_orderbook()?;
+orderbook.best_bid()
+orderbook.best_ask()
+orderbook.spread()
+
+// Force refresh
+market.reload()?;
+```
+
+## User
+
+```rust
+use braid_sdk::User;
+
+let (user_pda, _) = User::derive_address(&owner, &BRAID_ID);
+let user = User::new(&rpc, user_pda);
+let data = user.fetch()?;
+
+println!("Max orders: {}", data.max_orders);
+println!("Current orders: {}", data.current_orders);
+```
+
+## Protocol
+
+```rust
+use braid_sdk::Protocol;
+
+let (protocol_pda, _) = Protocol::derive_address(&BRAID_ID);
+let protocol = Protocol::new(&rpc, protocol_pda);
+let data = protocol.fetch()?;
+
+println!("Admin: {}", data.admin);
+println!("Min expiration: {}s", data.min_expiration_seconds);
+```
+
+## Shard Accounts
+
+```rust
+use braid_sdk::{ClmmOrders, LimitOrders};
+
+// CLMM shard
+let clmm_address = ClmmOrders::derive_address(&market, shard_idx, &BRAID_ID);
+let clmm = ClmmOrders::new(&rpc, clmm_address);
+
+// Limit shard
+let limit_address = LimitOrders::derive_address(&market, shard_idx, &BRAID_ID);
+let limit = LimitOrders::new(&rpc, limit_address);
+```

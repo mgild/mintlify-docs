@@ -1,0 +1,292 @@
+---
+title: Glossary
+description: 'Key terms and concepts in Braid Protocol'
+---
+
+# Glossary
+
+A comprehensive reference of terms used throughout Braid Protocol documentation.
+
+---
+
+## A
+
+### Active Set
+The collection of orders currently being considered by the matching engine during a swap. Limited to `MAX_ACTIVE_SET` (512) orders to ensure bounded compute.
+
+### AMM (Automated Market Maker)
+A smart contract that provides liquidity using a mathematical formula instead of discrete orders. Braid includes a CP-AMM alongside its orderbook.
+
+### Ask
+An order to sell the base token. Asks are priced in quote token per base token. The best ask is the lowest-priced sell order.
+
+---
+
+## B
+
+### Base Token
+The first token in a trading pair. In SOL/USDC, SOL is the base token. Amounts are expressed in base token units.
+
+### Bid
+An order to buy the base token. Bids are priced in quote token per base token. The best bid is the highest-priced buy order.
+
+### Bips (Basis Points)
+A unit equal to 1/100th of a percent (0.01%). Used for fee calculations. 100 bips = 1%.
+
+---
+
+## C
+
+### CLMM (Concentrated Liquidity Market Maker)
+An order type that provides liquidity within a specified price range. More capital-efficient than traditional AMMs. When filled, CLMM orders automatically "flip" to the opposite side.
+
+### Compute Units (CU)
+Solana's measure of computational resources. Transactions have a CU limit. Braid operations are designed to fit within typical limits (~200,000-400,000 CU).
+
+### CP-AMM (Constant Product AMM)
+The traditional x·y=k AMM included in Braid for baseline liquidity. Provides passive liquidity across all prices.
+
+### Crank
+An off-chain bot that performs maintenance operations like shard splitting, merging, and rebalancing. Anyone can run a crank.
+
+---
+
+## D
+
+### Density Function
+The mathematical function d(p) = k·t^n that describes how liquidity is distributed across a price range in an order curve. Higher density means more liquidity at that price.
+
+### Dust
+Very small order amounts that are economically insignificant. The matching engine can skip dust orders to save compute.
+
+---
+
+## E
+
+### Equilibrium Price
+The price at which total supply equals total demand in the matching engine. Found using Newton-Raphson optimization.
+
+### Exponent (n)
+The power in the order curve density function. Controls the shape of liquidity distribution:
+- n=1: Uniform (flat)
+- n=2: Concentrated at boundaries
+- n>2: Highly concentrated
+
+---
+
+## F
+
+### Fill
+The execution of an order. A partial fill leaves remaining liquidity. A complete fill removes the order.
+
+### Flip Mechanism
+The process where filled CLMM liquidity moves to the opposite side. If you sell 10 SOL, that becomes buying power for ~$1,500 worth of SOL at lower prices.
+
+### Front-Running
+A form of MEV where a bot sees your pending transaction and places their own transaction first to profit from the price movement you'll cause.
+
+---
+
+## G
+
+### GTC (Good-Till-Cancelled)
+An order that remains active until filled or explicitly cancelled. Most limit orders are GTC.
+
+### GTD (Good-Till-Date)
+An order with an expiration timestamp. Automatically cancelled if not filled by the specified time.
+
+---
+
+## I
+
+### Impermanent Loss (IL)
+The opportunity cost of providing liquidity compared to simply holding the tokens. Called "impermanent" because it reverses if price returns to the entry point.
+
+### Inverse Order
+In CLMM, the paired order on the opposite side. Every CLMM order has a linked inverse that receives flipped liquidity.
+
+---
+
+## L
+
+### Li-Chao Tree
+A data structure for efficient "best price" queries across multiple orders. Not currently used in Braid but mentioned in the whitepaper.
+
+### Limit Order
+A simple order to buy or sell at a specific price. Fills if the market reaches your price.
+
+### Liquidity
+The amount of tokens available for trading. More liquidity = less slippage = better prices.
+
+### LP (Liquidity Provider)
+Someone who deposits tokens into the protocol to earn trading fees.
+
+### LP Token
+A token representing your share of a liquidity pool. Burning LP tokens withdraws your proportional share.
+
+---
+
+## M
+
+### Maker
+A trader who adds liquidity by placing orders that wait on the book. Makers typically pay lower fees.
+
+### Marginal Price
+The instantaneous price at the current fill level. As you fill more, the marginal price moves along the order curve.
+
+### Market
+A Solana account storing configuration for a trading pair. Contains fee settings, shard pointers, and CP-AMM reserves.
+
+### Matching Engine
+The core algorithm that finds optimal prices and fills orders. Uses Newton-Raphson optimization.
+
+### MEV (Maximal Extractable Value)
+Value extracted by reordering, inserting, or censoring transactions. Includes front-running, sandwich attacks, and JIT liquidity.
+
+### Min Order Bips
+A parameter that tells the matching engine to skip orders smaller than X% of the remaining swap. Prevents dust griefing.
+
+### minOut
+Minimum acceptable output amount. If the swap would produce less, the transaction reverts. Primary slippage protection.
+
+---
+
+## N
+
+### Newton-Raphson
+An iterative algorithm for finding roots of equations. Braid uses it to find the equilibrium price across multiple order curves in ~3 iterations.
+
+---
+
+## O
+
+### Order Curve
+Braid's core abstraction: a continuous function describing how liquidity is distributed across a price range. Unifies all order types under a single mathematical framework.
+
+### Order ID
+A unique identifier for an order, used for cancellation and tracking.
+
+### Orderbook
+The collection of all bids and asks for a market. In Braid, orderbooks are sharded across multiple accounts.
+
+---
+
+## P
+
+### PDA (Program Derived Address)
+A Solana account address deterministically derived from seeds. Braid uses PDAs for markets, shards, and user accounts.
+
+### Price Impact
+How much your trade moves the market price. Larger trades have larger price impact.
+
+### Pro-Rata Matching
+Filling multiple orders at the same price proportionally by their size, rather than first-in-first-out. Eliminates latency advantages.
+
+### PropAMM
+Slot-scoped orders with zero fees. Valid for only ~400ms, providing strong MEV protection.
+
+### Protocol
+The global Solana account storing protocol-wide settings like admin keys and default fee rates.
+
+---
+
+## Q
+
+### Quote Token
+The second token in a trading pair. In SOL/USDC, USDC is the quote token. Prices are expressed in quote per base.
+
+---
+
+## R
+
+### Rebalance
+A crank operation that moves orders between shards to maintain even distribution. Happens when shard sizes become unbalanced.
+
+### Red-Black Tree
+A self-balancing binary search tree used for efficient order storage and lookup. Braid embeds RB-trees in shard accounts.
+
+### Reserve
+The amount of tokens held in an AMM pool. The product of reserves (k) stays constant during swaps.
+
+---
+
+## S
+
+### Sandwich Attack
+An MEV attack where a bot trades before AND after your transaction, profiting from the price movement in between.
+
+### Sequence Number
+A counter on each order that prevents replay attacks. Only updates with higher sequence numbers are accepted.
+
+### Shard
+A Solana account containing a subset of orders within a price range. Shards form a linked list for efficient traversal.
+
+### Shard Manager
+The component in the Market account that tracks shard boundaries and orchestrates split/merge/rebalance operations.
+
+### Side
+The direction of a trade or order: Bid (buy base) or Ask (sell base).
+
+### Size-Augmented Tree
+An RB-tree where each node stores the maximum size in its subtree. Enables O(log n) lookup of the smallest order for eviction.
+
+### Slippage
+The difference between expected price and actual execution price. Caused by price movement between submission and execution.
+
+### Slot
+Solana's unit of time, approximately 400ms. PropAMM orders are valid for exactly one slot.
+
+### Spot Price
+The current instantaneous price, before any trade occurs. In CP-AMM, it's the ratio of reserves.
+
+### Split
+A crank operation that divides a shard into two when it exceeds capacity. Creates a new shard and redistributes orders.
+
+---
+
+## T
+
+### Taker
+A trader who removes liquidity by trading against existing orders. Takers typically pay higher fees.
+
+### Tree Node
+The metadata stored with each order for tree operations: parent, left, right pointers and color (red/black).
+
+---
+
+## V
+
+### Vault
+A token account owned by the market PDA that holds deposited tokens. Each market has vaults for both tokens.
+
+---
+
+## W
+
+### Weighted Average
+A method of calculating a representative value where each component contributes proportionally to its weight. Used for initial price guess in Newton-Raphson.
+
+---
+
+## Quick Reference
+
+| Abbreviation | Full Name | Description |
+|--------------|-----------|-------------|
+| AMM | Automated Market Maker | Algorithmic liquidity provider |
+| CLMM | Concentrated Liquidity MM | Range-bound liquidity orders |
+| CP-AMM | Constant Product AMM | Traditional x·y=k pool |
+| CU | Compute Units | Solana's compute measure |
+| GTC | Good-Till-Cancelled | Non-expiring order |
+| GTD | Good-Till-Date | Expiring order |
+| IL | Impermanent Loss | LP opportunity cost |
+| LP | Liquidity Provider | Someone providing liquidity |
+| MEV | Maximal Extractable Value | Transaction reordering profits |
+| PDA | Program Derived Address | Deterministic Solana address |
+| PropAMM | Proportional AMM | Slot-scoped zero-fee orders |
+| RB | Red-Black (Tree) | Self-balancing tree structure |
+
+---
+
+<Note>
+**Missing a term?** Let us know on [GitHub](https://github.com/braid-protocol/braid) and we'll add it.
+</Note>

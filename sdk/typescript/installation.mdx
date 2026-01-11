@@ -1,0 +1,83 @@
+---
+title: Installation
+description: 'Install the Braid TypeScript SDK'
+---
+
+# TypeScript SDK Installation
+
+## Requirements
+
+- Node.js 18+ or Bun
+- TypeScript 5.0+ (recommended)
+
+## Install
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @braid/client
+    ```
+  </Tab>
+  <Tab title="pnpm">
+    ```bash
+    pnpm add @braid/client
+    ```
+  </Tab>
+  <Tab title="yarn">
+    ```bash
+    yarn add @braid/client
+    ```
+  </Tab>
+  <Tab title="bun">
+    ```bash
+    bun add @braid/client
+    ```
+  </Tab>
+</Tabs>
+
+## Peer Dependencies
+
+The SDK requires `@solana/web3.js`:
+
+```bash
+npm install @solana/web3.js
+```
+
+## Basic Setup
+
+```typescript
+import { Connection, PublicKey } from '@solana/web3.js';
+import { Market, BRAID_PROGRAM_ID } from '@braid/client';
+
+// Connect to Solana
+const connection = new Connection('https://api.mainnet-beta.solana.com');
+
+// Load a market
+const marketAddress = new PublicKey('...');
+const market = await Market.load(connection, marketAddress);
+
+console.log('Market loaded:', market.address.toBase58());
+console.log('Base mint:', market.mintA.toBase58());
+console.log('Quote mint:', market.mintB.toBase58());
+```
+
+## Environment Variables
+
+For development, you may want to configure:
+
+```bash
+# .env
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+BRAID_PROGRAM_ID=BRAiD1111111111111111111111111111111111111
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Market Operations" icon="chart-line" href="/sdk/typescript/market">
+    Load markets and query orderbook state
+  </Card>
+  <Card title="Place Orders" icon="plus" href="/sdk/typescript/orders">
+    Place limit and CLMM orders
+  </Card>
+</CardGroup>

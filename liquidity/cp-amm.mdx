@@ -1,0 +1,55 @@
+---
+title: Constant Product AMM
+description: 'Traditional x*y=k liquidity pools'
+---
+
+# Constant Product AMM
+
+Braid includes a built-in constant product AMM (CP-AMM) alongside the orderbook.
+
+## Overview
+
+The CP-AMM follows the standard `x * y = k` invariant:
+- Passive liquidity provision
+- Automatic price discovery
+- No active management required
+
+## Add Liquidity
+
+```typescript
+const tx = await cpAddLiquidity({
+  market: marketAddress,
+  amountA: 1_000_000n,
+  maxAmountB: 1_000_000n,  // Slippage protection
+  minLpTokens: 0n,
+  owner: wallet.publicKey,
+});
+```
+
+## Remove Liquidity
+
+```typescript
+const tx = await cpRemoveLiquidity({
+  market: marketAddress,
+  lpAmount: 500_000n,
+  minAmountA: 0n,
+  minAmountB: 0n,
+  owner: wallet.publicKey,
+});
+```
+
+## LP Token
+
+Liquidity providers receive LP tokens representing their share of the pool.
+
+```typescript
+const lpMint = market.lpMint;
+const userLpBalance = await getTokenBalance(connection, userLpAccount);
+```
+
+## Integration with Orderbook
+
+The matching engine routes optimally between the orderbook and CP-AMM:
+- No manual selection required
+- Best execution automatically determined
+- Split fills when beneficial

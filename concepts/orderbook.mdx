@@ -1,0 +1,467 @@
+---
+title: Orderbook
+description: 'Understanding the sharded orderbook structure'
+---
+
+# Orderbook
+
+This page explains how Braid's orderbook works - from the basic concept to the technical implementation details.
+
+## What is an Orderbook?
+
+An orderbook is a list of buy and sell orders organized by price. Think of it like a bulletin board where:
+
+- **Buyers** post how much they'll pay (bids)
+- **Sellers** post how much they want (asks)
+- **Trades happen** when a buyer's price meets or exceeds a seller's price
+
+```mermaid
+
+flowchart LR
+    subgraph BIDS["BIDS (buyers)"]
+        B1["$149.50 (10 SOL) - Best bid"]
+        B2["$149.00 (25 SOL)"]
+        B3["$148.50 (15 SOL)"]
+    end
+
+    subgraph ASKS["ASKS (sellers)"]
+        A1["$150.00 (5 SOL) - Best ask"]
+        A2["$150.50 (12 SOL)"]
+        A3["$151.00 (8 SOL)"]
+    end
+
+    B1 <-.->|Spread: $0.50| A1
+
+    style B1 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style B2 fill:#21252b,stroke:#3e4451,color:#abb2bf
+    style B3 fill:#21252b,stroke:#3e4451,color:#abb2bf
+    style A1 fill:#21252b,stroke:#e06c75,color:#abb2bf
+    style A2 fill:#21252b,stroke:#3e4451,color:#abb2bf
+    style A3 fill:#21252b,stroke:#3e4451,color:#abb2bf
+```
+
+The **spread** is the gap between the best bid and best ask ($149.50 to $150.00 = $0.50 spread).
+
+## Why Sharding?
+
+Traditional orderbooks store all orders in one place. This doesn't work on Solana because:
+
+1. **Account size limits**: Solana accounts max out at ~10MB
+2. **Compute limits**: Searching thousands of orders costs too many compute units
+3. **Concurrent access**: One account means one transaction at a time
+
+**Braid's solution**: Split the orderbook into multiple "shards" by price range.
+
+```mermaid
+
+flowchart LR
+    subgraph Traditional["Traditional (doesn't scale)"]
+        T1["ALL ORDERS<br/>(hits size limits)<br/>(slow to search)<br/>(single point of contention)"]
+    end
+
+    Traditional -->|Sharding| Sharded
+
+    subgraph Sharded["Sharded (unlimited scale)"]
+        S0["Shard 0<br/>$0-$100<br/>~100 orders"]
+        S1["Shard 1<br/>$100-$200<br/>~100 orders"]
+        S2["Shard 2<br/>$200-$300<br/>~100 orders"]
+        S0 <--> S1 <--> S2
+    end
+
+    style T1 fill:#21252b,stroke:#e06c75,color:#abb2bf
+    style S0 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style S1 fill:#21252b,stroke:#c678dd,color:#abb2bf
+    style S2 fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+### Benefits of Sharding
+
+| Benefit | How It Helps |
+|---------|-------------|
+| **Unlimited orders** | Add more shards as the market grows |
+| **Faster searches** | Only look in the relevant price range |
+| **Parallel updates** | Different shards can update simultaneously |
+| **Lower costs** | Smaller account reads = fewer compute units |
+
+## Orderbook Structure
+
+Each market has three types of orderbooks:
+
+```mermaid
+
+graph TB
+    subgraph Market["MARKET"]
+        subgraph CLMM["CLMM Orderbook (concentrated liquidity)"]
+            C0["Shard 0<br/>$0-100"] <--> C1["Shard 1<br/>$100-200"] <--> C2["Shard 2<br/>$200-300"]
+        end
+
+        subgraph Limit["Limit Orderbook (standard limit orders)"]
+            L0["Shard 0<br/>$0-100"] <--> L1["Shard 1<br/>$100-200"] <--> L2["Shard 2<br/>$200-300"]
+        end
+
+        subgraph PropAMM["PropAMM Orders (MEV protection)"]
+            PA["Single Account<br/>(slot-scoped, orders expire quickly)"]
+        end
+    end
+
+    style CLMM fill:#21252b,stroke:#61afef,color:#abb2bf
+    style Limit fill:#21252b,stroke:#c678dd,color:#abb2bf
+    style PropAMM fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+<Note>
+**Why isn't PropAMM sharded?** PropAMM orders only live for one slot (~400ms), so they don't accumulate. A single account is enough.
+</Note>
+
+## How Orders Are Organized
+
+Within each shard, orders are organized into separate **bid and ask price trees** - data structures that keep prices sorted for fast lookup.
+
+**Bid Tree** (buy orders, sorted descending - best bid is max):
+
+```mermaid
+
+graph TB
+    B150["$150"] --> B145["$145"]
+    B150 --> B152["$152<br/>Best bid"]
+    B145 --> B142["$142"]
+    B145 --> B147["$147"]
+
+    style B152 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style B150 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style B145 fill:#21252b,stroke:#3e4451,color:#abb2bf
+    style B142 fill:#21252b,stroke:#3e4451,color:#abb2bf
+    style B147 fill:#21252b,stroke:#3e4451,color:#abb2bf
+```
+
+**Ask Tree** (sell orders, sorted ascending - best ask is min):
+
+```mermaid
+
+graph TB
+    A155["$155"] --> A153["$153<br/>Best ask"]
+    A155 --> A160["$160"]
+    A153 --> A154["$154"]
+    A160 --> A158["$158"]
+    A160 --> A165["$165"]
+
+    style A153 fill:#21252b,stroke:#e06c75,color:#abb2bf
+    style A155 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style A160 fill:#21252b,stroke:#3e4451,color:#abb2bf
+    style A154 fill:#21252b,stroke:#3e4451,color:#abb2bf
+    style A158 fill:#21252b,stroke:#3e4451,color:#abb2bf
+    style A165 fill:#21252b,stroke:#3e4451,color:#abb2bf
+```
+
+### Finding the Best Price
+
+Every shard knows its best bid and best ask instantly (O(1) lookup):
+
+```mermaid
+
+flowchart LR
+    subgraph Header["SHARD HEADER"]
+        H1["Best Bid Index: 42"]
+        H2["Best Ask Index: 17"]
+        H3["Bid Count: 156"]
+        H4["Ask Count: 89"]
+    end
+
+    H1 --> O42["Order #42 is best bid"]
+    H2 --> O17["Order #17 is best ask"]
+
+    style Header fill:#21252b,stroke:#61afef,color:#abb2bf
+    style O42 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style O17 fill:#21252b,stroke:#e06c75,color:#abb2bf
+```
+
+No searching required - the shard header caches the answer.
+
+## Automatic Balancing
+
+Shards automatically balance themselves based on how full they are:
+
+### Split (Shard Too Full)
+
+When a shard exceeds 75% capacity and neighbors can't help:
+
+```mermaid
+
+flowchart LR
+    subgraph Before
+        B0["Shard 0 (95%)<br/>$0-$200<br/>[190 orders]"]
+    end
+
+    Before -->|Split| After
+
+    subgraph After["After (New shard created!)"]
+        A0["Shard 0<br/>$0-$100<br/>[95 orders]"]
+        A1["Shard 1<br/>$100-$200<br/>[95 orders]"]
+    end
+
+    style B0 fill:#21252b,stroke:#e06c75,color:#abb2bf
+    style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style A1 fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+### Merge (Shard Too Empty)
+
+When a shard drops below 25% and its neighbor is also sparse:
+
+```mermaid
+
+flowchart LR
+    subgraph Before
+        B0["Shard 0 (15%)<br/>[30 orders]"]
+        B1["Shard 1 (10%)<br/>[20 orders]"]
+    end
+
+    Before -->|Merge| After
+
+    subgraph After["After (Shard 1 deleted!)"]
+        A0["Shard 0 (25%)<br/>[50 orders]"]
+    end
+
+    style B0 fill:#21252b,stroke:#e5c07b,color:#abb2bf
+    style B1 fill:#21252b,stroke:#e5c07b,color:#abb2bf
+    style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+### Rebalance (Uneven Shards)
+
+When one shard is sparse but its neighbor has room:
+
+```mermaid
+
+flowchart LR
+    subgraph Before
+        B0["Shard 0 (20%)"]
+        B1["Shard 1 (50%)"]
+    end
+
+    Before -->|Rebalance| After
+
+    subgraph After["After (Orders moved to balance)"]
+        A0["Shard 0 (35%)"]
+        A1["Shard 1 (35%)"]
+    end
+
+    style B0 fill:#21252b,stroke:#e5c07b,color:#abb2bf
+    style B1 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style A1 fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+<Note>
+**Hysteresis**: There's a 50% buffer between split and merge thresholds to prevent constant splitting/merging when order counts hover around a boundary.
+</Note>
+
+## Reading the Orderbook
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+import { Market } from '@braid/client';
+
+// Load the market
+const market = new Market(rpc, marketAddress);
+
+// Fetch limit order shards
+const limitShards = await market.limitBids.fetchAllShards();
+const limitOrderbook = limitShards.toOrderbook();
+
+// Iterate through bids (highest price first)
+for (const bid of limitOrderbook.iterateBids()) {
+  console.log(`Bid: ${bid.base.amountRemaining} @ ${bid.base.pMin}-${bid.base.pMax}`);
+}
+
+// Fetch CLMM order shards
+const clmmShards = await market.clmmBids.fetchAllShards();
+const clmmOrderbook = clmmShards.toOrderbook();
+
+// Iterate through CLMM positions
+for (const position of clmmOrderbook.iterateBids()) {
+  console.log(`CLMM: ${position.base.liquidity} liquidity in range`);
+}
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+use braid_sdk::{Market, LimitOrderbook};
+
+// Load market
+let market = Market::new(&rpc, market_address);
+let market_data = market.fetch()?;
+
+// Load a specific shard
+let shard_data = rpc.get_account_data(&shard_address)?;
+let orderbook = LimitOrderbook::new(&shard_data);
+
+// Get best prices
+println!("Best bid: {:?}", orderbook.best_bid());
+println!("Best ask: {:?}", orderbook.best_ask());
+
+// Iterate bids (best to worst price)
+for order in orderbook.bids() {
+    println!("BID: {} x {} (owner: {})",
+        order.price,
+        order.amount,
+        order.owner
+    );
+}
+
+// Iterate asks (best to worst price)
+for order in orderbook.asks() {
+    println!("ASK: {} x {} (owner: {})",
+        order.price,
+        order.amount,
+        order.owner
+    );
+}
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Technical Deep Dive
+
+<Accordion title="For Developers: Shard Data Structures">
+
+### Shard Header Structure
+
+Every shard starts with a header containing metadata and tree state:
+
+```rust
+struct BaseShardHeader {
+    discriminator: [u8; 8],      // Account type identifier
+    self_pubkey: Address,        // This shard's address (for validation)
+    market: Address,             // Parent market
+    market_id: u64,              // Market sequence number
+
+    bids: SideState,             // Bid tree state
+    asks: SideState,             // Ask tree state
+
+    capacity: u32,               // Max orders in this shard
+    last_updated_at: i64,        // Unix timestamp
+    next_order_id: u64,          // Auto-increment for new orders
+
+    next_bids_shard: Address,    // Toward lower prices (worse bids)
+    next_asks_shard: Address,    // Toward higher prices (worse asks)
+
+    min_price: u64,              // Lower price bound (inclusive)
+    max_price: u64,              // Upper price bound (exclusive)
+
+    shard_flags: u8,             // Status flags (migrating, etc.)
+    bump: u8,                    // PDA bump seed
+}
+```
+
+### Side State (Per-Side Tracking)
+
+Each side (bids/asks) maintains:
+
+```rust
+struct SideState {
+    price_tree: TreeState,       // Red-black tree for price ordering
+    count: u32,                  // Number of orders
+    free_head: u32,              // Free list for reusing slots
+    next_slot: u32,              // Next available slot index
+}
+
+struct TreeState {
+    root: u32,                   // Root node index
+    min_idx: u32,                // Best price (cached for O(1))
+    max_idx: u32,                // Worst price (cached for O(1))
+}
+```
+
+### Order Structure (Limit Orders)
+
+```rust
+struct LimitOrder {
+    // Base order fields
+    owner: Address,              // Order owner
+    amount: u64,                 // Remaining amount
+    filled_amount: u64,          // Amount already filled
+    price: u64,                  // Limit price
+
+    // Tree node (embedded - no separate index accounts)
+    left: u32,                   // Left child index
+    right: u32,                  // Right child index
+    parent: u32,                 // Parent index
+    color: u8,                   // Red (0) or Black (1)
+
+    // Metadata
+    created_at: i64,             // Unix timestamp
+    expires_at: i64,             // 0 = never expires
+    order_id: u64,               // Unique ID within shard
+    side: u8,                    // 0 = bid, 1 = ask
+}
+```
+
+### Index Scheme
+
+Orders use a simple odd/even scheme for indexing:
+
+| Index | Side | Example |
+|-------|------|---------|
+| 1, 3, 5, 7, ... | Bids | Order slot 1 is a bid |
+| 2, 4, 6, 8, ... | Asks | Order slot 2 is an ask |
+| u32::MAX | NULL | Empty/null sentinel |
+
+This allows instant side identification: `is_bid = (idx % 2 == 1)`.
+
+### PDA Seeds
+
+```rust
+// Shard addresses are derived from:
+["clmm_orders", market_pubkey, shard_idx.to_le_bytes()]
+["limit_orders", market_pubkey, shard_idx.to_le_bytes()]
+["prop_amm_orders", market_pubkey]  // No shard_idx (single account)
+```
+
+### Shard Balancing Thresholds
+
+| Threshold | Condition | Action | Why |
+|-----------|-----------|--------|-----|
+| 75% | Shard full, neighbors full | Split | Create capacity |
+| 25% | Shard sparse, neighbor sparse | Merge | Reclaim rent |
+| 25% | Shard sparse, neighbor has room | Rebalance | Even distribution |
+| 50% gap | Between split/merge | Hysteresis | Prevent thrashing |
+
+</Accordion>
+
+<Accordion title="For Developers: Performance Characteristics">
+
+### Time Complexity
+
+| Operation | Complexity | Notes |
+|-----------|------------|-------|
+| Best bid/ask | O(1) | Cached in header |
+| Place order | O(log n) | Tree insertion |
+| Cancel order | O(log n) | Tree deletion |
+| Fill order | O(1) | Direct index access |
+| Find shard for price | O(s) | s = number of shards, usually &lt;10 |
+
+### Space Complexity
+
+| Component | Size | Notes |
+|-----------|------|-------|
+| Shard header | ~500 bytes | Fixed overhead per shard |
+| Limit order | 88 bytes | Including tree node |
+| CLMM order | 96 bytes | Including density curve data |
+| PropAMM order | 104 bytes | Including slot data |
+| Typical shard | ~10KB | ~100 orders per shard |
+
+### Compute Units (CU)
+
+| Operation | Typical CU | Notes |
+|-----------|------------|-------|
+| Load shard | ~5,000 | Deserialization |
+| Place order | ~15,000 | With tree rebalance |
+| Cancel order | ~12,000 | With tree rebalance |
+| Take (per fill) | ~8,000 | Per order touched |
+| Shard split | ~50,000 | Heavy operation (cranked) |
+
+</Accordion>

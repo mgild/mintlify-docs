@@ -1,0 +1,103 @@
+---
+title: Take (Swap)
+description: 'Execute market orders and swaps'
+---
+
+# Take (Swap)
+
+The `take` instruction executes a market order by filling against the best available orders.
+
+`swapIx` is an alias for `takeIx` - both methods are identical.
+
+## Basic Swap
+
+```typescript
+import { Side } from '@braid/client';
+
+// Buy base token (take from asks)
+const tx = await Market.swapIx({
+  side: Side.Ask,
+  amount: 1_000_000n,       // Input amount (quote tokens)
+  minOut: 950_000n,         // Minimum output (slippage protection)
+  limitPrice: 0n,           // 0 = no price limit (market order)
+  taker: wallet.publicKey,
+});
+
+const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
+```
+
+## Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `side` | `Side` | `Ask` (buy base) or `Bid` (sell base) |
+| `amount` | `bigint` | Input amount to swap |
+| `minOut` | `bigint` | Minimum output (reverts if not met) |
+| `limitPrice` | `bigint` | Price limit (0 = no limit) |
+| `taker` | `PublicKey` | Taker wallet (signer) |
+| `minOrderBips` | `number` | Skip orders below this % (optional) |
+| `maxOrders` | `number` | Max orders to touch (optional) |
+
+## Slippage Protection
+
+Always set `minOut` to protect against unfavorable execution:
+
+```typescript
+// Calculate expected output
+const quote = await market.getQuote({
+  side: Side.Ask,
+  amount: 1_000_000n,
+});
+
+// Set minOut with 1% slippage tolerance
+const slippageBps = 100; // 1%
+const minOut = quote.expectedOutput * (10000n - BigInt(slippageBps)) / 10000n;
+
+const tx = await Market.swapIx({
+  side: Side.Ask,
+  amount: 1_000_000n,
+  minOut,
+  limitPrice: 0n,
+  taker: wallet.publicKey,
+});
+```
+
+## Limit Orders (IOC)
+
+Set a `limitPrice` to only fill at acceptable prices:
+
+```typescript
+// Only buy if price is at or below 100
+const tx = await Market.swapIx({
+  side: Side.Ask,
+  amount: 1_000_000n,
+  minOut: 0n,
+  limitPrice: 100_000_000n,  // Max price willing to pay
+  taker: wallet.publicKey,
+});
+```
+
+## Get Quote
+
+Preview swap output before executing:
+
+```typescript
+const quote = await market.getQuote({
+  side: Side.Ask,
+  amount: 1_000_000n,
+});
+
+console.log('Expected output:', quote.expectedOutput);
+console.log('Price impact:', quote.priceImpact);
+console.log('Orders touched:', quote.ordersCount);
+```
+
+## Routing
+
+The take instruction automatically routes across all order sources:
+
+1. **PropAMM orders** - Slot-scoped orders
+2. **CLMM orders** - Concentrated liquidity
+3. **Limit orders** - Standard fixed-price
+
+Orders are selected purely by best price - the matching engine greedily fills from the cheapest source.

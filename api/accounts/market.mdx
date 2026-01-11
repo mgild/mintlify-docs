@@ -1,0 +1,64 @@
+---
+title: Market Account
+description: 'Market account structure'
+---
+
+# Market Account
+
+The Market account stores per-market configuration and state.
+
+## Seeds
+
+```
+["market", mint_a, mint_b, seed]
+```
+
+## Structure
+
+```rust
+struct Market {
+    discriminator: [u8; 8],
+    self_pubkey: Address,
+    admin: Address,
+    mint_a: Address,
+    mint_b: Address,
+    token_program_a: Address,
+    token_program_b: Address,
+    lut: Address,
+    lut_slot: u64,
+    lp_mint: Address,
+    cp_amm_reserve_a: Address,
+    cp_amm_reserve_b: Address,
+    external_routes: Address,
+    last_updated_at: i64,
+    order_count: u32,
+    clmm_fee_bps: u16,
+    limit_fee_bps: u16,
+    prop_amm_base_fee_bps: u16,
+    prop_amm_slot_fee_bps: u16,
+    cp_amm_swap_fee_bps: u16,
+    protocol_fee_bps: u16,
+    referral_fee_bps: u16,
+    max_oracle_deviation_bps: u16,
+    is_paused: u8,
+    bump: u8,
+    base_decimals: u8,
+    quote_decimals: u8,
+    seed: [u8; 8],
+    orderbook: OrderBookConfig,
+    clmm_shards: ShardManager,
+    limit_shards: ShardManager,
+}
+```
+
+## Key Fields
+
+| Field | Description |
+|-------|-------------|
+| `mint_a` | Base token mint |
+| `mint_b` | Quote token mint |
+| `clmm_fee_bps` | CLMM taker fee |
+| `limit_fee_bps` | Limit order taker fee |
+| `is_paused` | Whether trading is paused |
+| `clmm_shards` | CLMM shard management |
+| `limit_shards` | Limit shard management |

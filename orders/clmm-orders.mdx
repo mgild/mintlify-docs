@@ -1,0 +1,101 @@
+---
+title: CLMM Orders
+description: 'Concentrated liquidity market making'
+---
+
+# CLMM Orders
+
+Concentrated Liquidity Market Maker orders provide liquidity across a price range with power-law density curves.
+
+## Key Concept: Paired Orders
+
+Every CLMM order creates a **bid+ask pair**:
+
+```mermaid
+
+flowchart TB
+    Place["Place CLMM Ask<br/>(1000 A in range [95, 105])"] --> Result
+
+    subgraph Result
+        A["ASK: 1000A<br/>[95, 105]<br/>(primary)"] <--> B["BID: 0 B<br/>[95, 105]<br/>(inverse)"]
+    end
+
+    style A fill:#21252b,stroke:#e06c75,color:#abb2bf
+    style B fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+When filled, liquidity **flips** to the inverse:
+
+```mermaid
+
+flowchart TB
+    Take["Taker buys 600 A @ 100"] --> After
+
+    subgraph After["After Fill (Flipped!)"]
+        A2["ASK: 400A<br/>[95, 105]"] <--> B2["BID: 600B<br/>[95, 105]"]
+    end
+
+    style A2 fill:#21252b,stroke:#e06c75,color:#abb2bf
+    style B2 fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+## Place Position
+
+```typescript
+const tx = await placeClmmPosition({
+  market: marketAddress,
+  side: Side.Ask,
+  pMin: 95_000_000n,
+  pMax: 105_000_000n,
+  amount: 10_000_000n,
+  owner: wallet.publicKey,
+});
+```
+
+## Cancel Position
+
+Cancelling removes **both** the primary and inverse orders:
+
+```typescript
+const tx = await cancelClmmPosition({
+  market: marketAddress,
+  orderIdx: 42,
+  side: Side.Ask,
+  owner: wallet.publicKey,
+});
+// Refunds from both vaults (A and B)
+```
+
+## Power-Law Density
+
+CLMM orders use power-law density curves:
+
+```
+d(t) = n * t^(n-1)
+```
+
+Where `t` is normalized position in the price range [0, 1].
+
+| Exponent | Behavior |
+|----------|----------|
+| n = 1 | Uniform density (constant) |
+| n = 2 | Linear increasing density |
+| n > 2 | Concentrated toward high prices |
+
+## Fill with Flip
+
+When a CLMM order is filled:
+
+1. Primary order's `amount_remaining` decreases
+2. Inverse order's `amount_remaining` increases
+3. No new allocation needed (inverse already exists)
+
+```rust
+pub fn fill_with_flip(&mut self, side, idx, fill_amount, price) {
+    // Reduce filled order
+    primary.amount_remaining -= actual_fill;
+
+    // Flip liquidity to inverse
+    inverse.amount_remaining += output_amount;
+}
+```

@@ -1,0 +1,120 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Braid Protocol",
+  "css": "/custom.css",
+  "js": ["/mermaid-modal.js", "/pdf-download.js"],
+  "colors": {
+    "primary": "#6366f1",
+    "light": "#818cf8",
+    "dark": "#4f46e5"
+  },
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "languages": [
+      {
+        "language": "en",
+        "tabs": [
+          {
+            "tab": "Documentation",
+            "groups": [
+              {
+                "group": "Getting Started",
+                "pages": [
+                  "introduction",
+                  "quickstart",
+                  "architecture"
+                ]
+              },
+              {
+                "group": "Core Concepts",
+                "pages": [
+                  "concepts/orderbook",
+                  "concepts/order-types",
+                  "concepts/sharding",
+                  "concepts/matching-engine"
+                ]
+              },
+              {
+                "group": "Order Types",
+                "pages": [
+                  "orders/limit-orders",
+                  "orders/clmm-orders",
+                  "orders/prop-amm-orders"
+                ]
+              },
+              {
+                "group": "Liquidity",
+                "pages": [
+                  "liquidity/cp-amm",
+                  "liquidity/concentrated-liquidity"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "SDK",
+            "groups": [
+              {
+                "group": "TypeScript SDK",
+                "pages": [
+                  "sdk/typescript/installation",
+                  "sdk/typescript/market",
+                  "sdk/typescript/orders",
+                  "sdk/typescript/take"
+                ]
+              },
+              {
+                "group": "Rust SDK",
+                "pages": [
+                  "sdk/rust/installation",
+                  "sdk/rust/accounts",
+                  "sdk/rust/orderbook"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "API Reference",
+            "groups": [
+              {
+                "group": "Instructions",
+                "pages": [
+                  "api/instructions/market-init",
+                  "api/instructions/place-order",
+                  "api/instructions/cancel-order",
+                  "api/instructions/take"
+                ]
+              },
+              {
+                "group": "Accounts",
+                "pages": [
+                  "api/accounts/market",
+                  "api/accounts/orderbook",
+                  "api/accounts/user"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footerSocials": {
+    "github": "https://github.com/braid-protocol/braid",
+    "twitter": "https://twitter.com/braidprotocol"
+  },
+  "analytics": {
+    "posthog": {
+      "apiKey": ""
+    }
+  },
+  "feedback": {
+    "thumbsRating": true,
+    "suggestEdit": true
+  }
+}

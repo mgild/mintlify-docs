@@ -1,0 +1,219 @@
+---
+title: Introduction
+description: 'Braid Protocol - Density orders and unified liquidity on Solana'
+---
+
+# Don't just trade. Braid.
+
+Braid is a new financial primitive: **limit orders that act across a price range**, not just a single price point.
+
+## The Problem with Traditional Orders
+
+When you want to buy a token, you rarely think in terms of a single price:
+
+*"I want to buy a little if it dips to 95, but a lot more if it drops to 90."*
+
+Today, expressing this intent requires manually placing dozens of orders at different prices - tedious, gas-intensive, and error-prone. Most traders give up and either:
+- Place a single limit order (missing opportunities)
+- Market buy everything at once (getting worse prices)
+
+## Density Orders: Your Intent, One Order
+
+Braid introduces **density orders** - specify a price range and a distribution curve, and Braid handles the rest:
+
+```
+Buy SOL from $140 to $130
+├─ At $140: Buy with 10% of capital
+├─ At $135: Buy with 30% of capital
+└─ At $130: Buy with 60% of capital
+```
+
+One order. One transaction. Your full trading intent expressed on-chain.
+
+## Real-World Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Smart Accumulation" icon="chart-line-down">
+    Buy more as prices fall - automatic DCA that responds to market conditions, not arbitrary time intervals.
+  </Card>
+  <Card title="Graduated Profit-Taking" icon="chart-line-up">
+    Sell progressively as prices rise. Capture gains without trying to time the exact top.
+  </Card>
+  <Card title="Portfolio Rebalancing" icon="scale-balanced">
+    Rebalance gradually as prices move. Earn spread instead of paying it.
+  </Card>
+  <Card title="Liquidity Provision" icon="droplet">
+    Provide two-sided liquidity with linked buy/sell ranges. Market make without active management.
+  </Card>
+</CardGroup>
+
+## Think Like a Market Maker
+
+Professional market makers don't think about single prices - they think about curves:
+
+| Concept | What It Means | How Braid Helps |
+|---------|---------------|-----------------|
+| **Spread** | Gap between buy and sell prices | Define your own spread with density order ranges |
+| **Depth** | How much liquidity at each price level | Shape your liquidity curve across any range |
+| **Gamma** | How fast you accumulate inventory | Control your exposure curve as prices move |
+
+With Braid, retail traders get the same expressive power that professional market makers have always had - without the infrastructure, capital requirements, or complexity.
+
+## PropAMM: Launch Your Strategy
+
+Braid isn't just for traders. **PropAMM** lets anyone deploy automated trading strategies on-chain:
+
+- **Zero fees** for PropAMM orders
+- **MEV-resistant** execution (slot-scoped orders)
+- **Fully on-chain** - no servers, no custody risk
+
+Whether you're building a rebalancing bot, a yield optimizer, or a novel AMM curve - PropAMM gives you the primitives to launch it.
+
+## Unified Liquidity for Token Launches
+
+New tokens face an impossible choice:
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Constant Product AMM** | Simple, always liquid | Capital inefficient, high slippage |
+| **Concentrated Liquidity** | Better capital efficiency | Complex, requires active management |
+
+Choosing one means fragmenting liquidity. Braid solves this by **combining both in one venue**:
+
+- Constant-product AMM for baseline liquidity
+- Concentrated liquidity positions for capital efficiency
+- Limit orders for price discovery
+- All routed through a single matching engine
+
+**One pool. All liquidity types. No fragmentation.**
+
+---
+
+## How It Works
+
+When you swap on Braid, the matching engine finds the best prices across all sources:
+
+```mermaid
+
+flowchart TB
+    subgraph Request["Your Swap"]
+        R1["Swap 1000 USDC for SOL"]
+    end
+
+    R1 --> Engine
+
+    subgraph Engine["Matching Engine"]
+        E1["CLMM Orders"]
+        E2["Limit Orders"]
+        E3["CP-AMM Pool"]
+        E4["PropAMM"]
+    end
+
+    Engine --> Result["Best execution across<br/>all liquidity sources"]
+
+    style R1 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style E1 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style E2 fill:#21252b,stroke:#c678dd,color:#abb2bf
+    style E3 fill:#21252b,stroke:#e5c07b,color:#abb2bf
+    style E4 fill:#21252b,stroke:#e06c75,color:#abb2bf
+    style Result fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+## Architecture at a Glance
+
+```mermaid
+
+graph TB
+    P["Protocol<br/>(global settings)"]
+    P --> M["Market<br/>(one per trading pair)"]
+    M --> C1["CP-AMM<br/>Baseline liquidity"]
+    M --> C2["CLMM Orders<br/>Concentrated positions"]
+    M --> C3["Limit Orders<br/>Price discovery"]
+    M --> C4["PropAMM<br/>Strategy execution"]
+
+    style P fill:#21252b,stroke:#61afef,color:#abb2bf
+    style M fill:#21252b,stroke:#c678dd,color:#abb2bf
+    style C1 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style C2 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style C3 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style C4 fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+## Get Started
+
+<CardGroup cols={3}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Your first trade in 5 minutes
+  </Card>
+  <Card title="TypeScript SDK" icon="js" href="/sdk/typescript/installation">
+    Build trading applications
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Technical deep dive
+  </Card>
+</CardGroup>
+
+---
+
+## Technical Deep Dive
+
+<Accordion title="For Developers: Key Technical Details">
+
+### Sharded Orderbooks
+
+Traditional on-chain orderbooks hit Solana's account size limits. Braid shards orders by price range:
+
+```mermaid
+
+flowchart LR
+    S0["Shard 0<br/>$0-$100"]
+    S1["Shard 1<br/>$100-$200"]
+    S2["Shard 2<br/>$200+"]
+
+    S0 <--> S1 <--> S2
+
+    style S0 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style S1 fill:#21252b,stroke:#c678dd,color:#abb2bf
+    style S2 fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+- **Unlimited orders**: Add shards as needed
+- **Fast lookups**: Only search relevant price ranges
+- **Parallel processing**: Multiple shards update simultaneously
+
+### Account Structure
+
+| Account Type | Count | Description |
+|--------------|-------|-------------|
+| Market | 1 | Market config, fee settings, shard managers |
+| CP-AMM Vaults | 2 | Token reserves for constant-product AMM |
+| ClmmOrders | Variable | Sharded CLMM orders by price range |
+| LimitOrders | Variable | Sharded limit orders by price range |
+| PropAmmOrders | 1 | Slot-scoped orders (not sharded) |
+
+### Fee Structure
+
+| Fee Type | Applied To | Typical Range |
+|----------|------------|---------------|
+| CLMM Fee | CLMM order fills | 1-30 bps |
+| Limit Fee | Limit order fills | 1-10 bps |
+| PropAMM Fee | PropAMM orders | **0 bps** |
+| Protocol Fee | All trades | 1-5 bps |
+
+### PDA Seeds
+
+```rust
+// Market
+["market", mint_a, mint_b, seed]
+
+// Orderbook shards
+["clmm_orders", market, shard_idx]
+["limit_orders", market, shard_idx]
+["prop_amm_orders", market]
+
+// User tracking
+["user", owner]
+["user_orders_header", owner, market]
+```
+
+</Accordion>

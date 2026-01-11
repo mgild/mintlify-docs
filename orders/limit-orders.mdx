@@ -1,0 +1,106 @@
+---
+title: Limit Orders
+description: 'Price range orders with concentrated liquidity'
+---
+
+# Limit Orders
+
+Limit orders in Braid use concentrated liquidity curves with a price range.
+
+## Overview
+
+Limit orders specify:
+- Price range (pMin to pMax)
+- Single-sided (bid OR ask)
+- Amount of liquidity to provide
+- FIFO execution within price level
+
+## Structure
+
+```rust
+struct LimitOrder {
+    p_min: u64,              // Lower price bound
+    p_max: u64,              // Upper price bound
+    amount_remaining: u64,   // Unfilled amount
+    full_amount: u64,        // Original order size
+    owner: Address,          // Order owner
+    order_id: u64,           // Unique ID
+    side: Side,              // Bid or Ask
+}
+```
+
+## Place Order
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    const tx = await market.placeLimitOrder({
+      side: Side.Bid,
+      pMin: 95_000_000n,     // Lower price bound
+      pMax: 100_000_000n,    // Upper price bound
+      amount: 1_000_000n,
+      owner: wallet.publicKey,
+    });
+    ```
+  </Tab>
+  <Tab title="Instruction">
+    ```
+    Instruction: PlaceLimitOrder
+    Accounts:
+      0. [writable] Market
+      1. [writable] Shard (matching price range)
+      2. [writable] User account
+      3. [writable] User token account
+      4. [writable] Vault
+      5. [signer] Owner
+      6. [] Token program
+    ```
+  </Tab>
+</Tabs>
+
+## Cancel Order
+
+```typescript
+const tx = await market.cancelLimitOrder({
+  orderIdx: 42,
+  side: Side.Bid,
+  owner: wallet.publicKey,
+});
+```
+
+## Price Range
+
+The price range determines where your order is active:
+
+- **Tight range** (pMin close to pMax): More concentrated liquidity, fills faster at your target price
+- **Wide range** (pMin far from pMax): More flexibility, may fill across a range of prices
+
+```typescript
+// Tight range: Buy around $100
+const tx = await market.placeLimitOrder({
+  side: Side.Bid,
+  pMin: 99_000_000n,
+  pMax: 101_000_000n,
+  amount: 10_000_000n,
+  owner: wallet.publicKey,
+});
+
+// Wide range: Buy anywhere from $95-$105
+const tx = await market.placeLimitOrder({
+  side: Side.Bid,
+  pMin: 95_000_000n,
+  pMax: 105_000_000n,
+  amount: 10_000_000n,
+  owner: wallet.publicKey,
+});
+```
+
+## Fees
+
+Limit order fees are configured per-market:
+
+| Fee | Description |
+|-----|-------------|
+| `limit_fee_bps` | Taker fee (basis points) |
+| `protocol_fee_bps` | Protocol share of fees |
+| `referral_fee_bps` | Referral share (if applicable) |

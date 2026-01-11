@@ -1,0 +1,47 @@
+---
+title: OrderbookTake
+description: 'Execute swaps with multi-source routing'
+---
+
+# OrderbookTake
+
+Executes a market order with optimal routing across all order sources.
+
+## Accounts
+
+| # | Account | Writable | Signer | Description |
+|---|---------|----------|--------|-------------|
+| 0 | Market | No | No | Market account |
+| 1 | PropAMM Orders | Yes | No | PropAMM orders account |
+| 2,3,4 | CLMM Shards | Yes | No | Shards along the CLMM chain for this side |
+| 5,6,7 | Limit Shards | Yes | No | Shards along the Limit chain for this side |
+| 8 | Taker Input | Yes | No | Taker's input token account |
+| 9 | Taker Output | Yes | No | Taker's output token account |
+| 10 | Vault In | Yes | No | Market vault (receives input) |
+| 11 | Vault Out | Yes | No | Market vault (sends output) |
+| 12 | Mint In | No | No | Input token mint |
+| 13 | Mint Out | No | No | Output token mint |
+| 14 | Protocol Fee | Yes | No | Protocol fee account |
+| 15 | Taker | No | Yes | Taker (signer) |
+| 16,17 | Token Programs | No | No | Token programs A and B |
+
+## Parameters
+
+```rust
+struct OrderbookTakeParams {
+    amount: u64,          // Input amount
+    min_out: u64,         // Minimum output (slippage)
+    limit_price: u64,     // Price limit (0 = no limit)
+    side: u8,             // 0 = buy, 1 = sell
+    min_order_bips: u16,  // Skip tiny orders
+    max_orders: u32,      // Max orders to touch
+}
+```
+
+## Errors
+
+| Error | Description |
+|-------|-------------|
+| `SlippageExceeded` | Output below `min_out` |
+| `InsufficientLiquidity` | No orders to fill |
+| `MarketPaused` | Market is paused |

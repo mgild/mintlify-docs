@@ -1,0 +1,63 @@
+---
+title: Place Order
+description: 'Place limit, CLMM, or PropAMM orders'
+---
+
+# Place Order Instructions
+
+## PlaceLimitOrder
+
+Places a standard limit order.
+
+### Accounts
+| # | Account | Writable | Signer |
+|---|---------|----------|--------|
+| 0 | Market | Yes | No |
+| 1 | Shard | Yes | No |
+| 2 | User | Yes | No |
+| 3 | User Token | Yes | No |
+| 4 | Vault | Yes | No |
+| 5 | Owner | No | Yes |
+| 6 | Token Program | No | No |
+
+### Parameters
+```rust
+struct PlaceLimitOrderParams {
+    price: u64,
+    amount: u64,
+    side: u8,
+    expires_at: i64,
+}
+```
+
+---
+
+## PlaceClmmPosition
+
+Places a concentrated liquidity position.
+
+### Parameters
+```rust
+struct PlaceClmmPositionParams {
+    p_min: u64,
+    p_max: u64,
+    amount: u64,
+    side: u8,
+}
+```
+
+---
+
+## PlacePropOrder
+
+Places a slot-scoped proportional order.
+
+### Parameters
+```rust
+struct PlacePropOrderParams {
+    slot: u64,
+    price: u64,
+    amount: u64,
+    side: u8,
+}
+```

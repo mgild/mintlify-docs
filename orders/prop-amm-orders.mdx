@@ -1,0 +1,68 @@
+---
+title: PropAMM Orders
+description: 'Slot-scoped two-sided orders with zero fees for MEV protection'
+---
+
+# PropAMM Orders
+
+Proportional AMM orders are slot-scoped, two-sided liquidity positions with **zero fees**, designed for MEV-resistant trading.
+
+## Overview
+
+PropAMM orders are:
+- **Two-sided**: Place bid AND ask simultaneously around a price range
+- Valid only for the current slot (~400ms)
+- **Zero trading fees** (no base fee, no slot fee)
+- Designed to discourage front-running through slot-scoping
+
+## Zero Fee Design
+
+Unlike CLMM and Limit orders which charge trading fees, PropAMM orders have **no fees**:
+
+| Order Type | Fee |
+|------------|-----|
+| CLMM | `clmm_fee_bps` (typically 30 bps) |
+| Limit | `limit_fee_bps` (typically 20 bps) |
+| **PropAMM** | **0 bps (zero fees)** |
+
+The zero-fee design compensates makers for the extremely short order lifetime (~1 slot).
+
+## Place Order
+
+PropAMM orders place liquidity on both sides of the orderbook:
+
+```typescript
+const tx = await market.placePropOrder({
+  pMin: 148_000_000n,      // Lower price bound
+  pMax: 152_000_000n,      // Upper price bound
+  amount: 10_000_000_000n, // Liquidity amount
+  owner: wallet.publicKey,
+});
+```
+
+This creates both a bid and ask within the price range, valid for the current slot only.
+
+## Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pMin` | `bigint` | Lower price bound |
+| `pMax` | `bigint` | Upper price bound |
+| `amount` | `bigint` | Total liquidity amount |
+| `owner` | `PublicKey` | Position owner (signer) |
+
+## MEV Protection
+
+PropAMM orders protect against front-running because:
+
+1. **Slot-scoped validity**: Orders expire after ~400ms, leaving no time for MEV bots to react
+2. **Two-sided**: Provides liquidity on both sides, harder to exploit directionally
+3. **Zero fees**: No fee advantage to extract
+4. **Private submission**: Best used with Jito bundles to hide orders from mempool
+
+## Use Cases
+
+- MEV-resistant swaps
+- Time-sensitive market making
+- Large trades that would otherwise be sandwiched
+- High-frequency two-sided liquidity

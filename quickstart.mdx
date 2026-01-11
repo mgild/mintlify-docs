@@ -1,0 +1,360 @@
+---
+title: Quickstart
+description: 'Get started with Braid in 5 minutes'
+---
+
+# Quickstart
+
+This guide walks you through your first Braid integration step-by-step. By the end, you'll be able to:
+
+1. Connect to a Braid market
+2. Read orderbook data
+3. Place a limit order
+4. Execute a swap
+
+## Prerequisites
+
+Before starting, make sure you have:
+
+- **Node.js 18+** (check with `node --version`)
+- **A Solana wallet** with some SOL for transaction fees
+- **RPC endpoint** (free tier from Helius, QuickNode, or Triton works fine)
+
+<Note>
+**New to Solana?** You'll need SOL tokens to pay transaction fees (~0.000005 SOL per transaction). Get testnet SOL free from [sol-faucet.com](https://solfaucet.com) to practice on devnet first.
+</Note>
+
+## Step 1: Install the SDK
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @braid/client @solana/web3.js
+    ```
+  </Tab>
+  <Tab title="pnpm">
+    ```bash
+    pnpm add @braid/client @solana/web3.js
+    ```
+  </Tab>
+  <Tab title="yarn">
+    ```bash
+    yarn add @braid/client @solana/web3.js
+    ```
+  </Tab>
+  <Tab title="Rust">
+    Add to your `Cargo.toml`:
+    ```toml
+    [dependencies]
+    braid-sdk = "0.1"
+    solana-client = "1.18"
+    solana-sdk = "1.18"
+    ```
+  </Tab>
+</Tabs>
+
+## Step 2: Set Up Your Connection
+
+Create a new file `braid-example.ts`:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+import { Connection, Keypair, PublicKey } from '@solana/web3.js';
+import { Market } from '@braid/client';
+
+// 1. Connect to Solana
+const connection = new Connection(
+  process.env.RPC_URL || 'https://api.mainnet-beta.solana.com',
+  'confirmed'  // Wait for transaction confirmation
+);
+
+// 2. Load your wallet (NEVER commit private keys!)
+// Option A: From environment variable
+const wallet = Keypair.fromSecretKey(
+  Buffer.from(JSON.parse(process.env.WALLET_PRIVATE_KEY!))
+);
+
+// Option B: From file (for local development)
+// const wallet = Keypair.fromSecretKey(
+//   Buffer.from(JSON.parse(fs.readFileSync('~/.config/solana/id.json', 'utf-8')))
+// );
+
+console.log('Wallet address:', wallet.publicKey.toBase58());
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+use solana_client::rpc_client::RpcClient;
+use solana_sdk::{
+    signature::{Keypair, read_keypair_file},
+    commitment_config::CommitmentConfig,
+};
+use std::env;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Connect to Solana
+    let rpc_url = env::var("RPC_URL")
+        .unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string());
+
+    let rpc = RpcClient::new_with_commitment(
+        rpc_url,
+        CommitmentConfig::confirmed(),
+    );
+
+    // 2. Load your wallet
+    let wallet = read_keypair_file("~/.config/solana/id.json")?;
+    println!("Wallet address: {}", wallet.pubkey());
+
+    Ok(())
+}
+```
+  </Tab>
+</Tabs>
+
+<Warning>
+**Security**: Never hardcode private keys in your code. Use environment variables or secure key management in production.
+</Warning>
+
+## Step 3: Load a Market
+
+A "market" is a trading pair like SOL/USDC. Each market has a unique address.
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+// SOL/USDC market address (example - replace with actual)
+const MARKET_ADDRESS = new PublicKey('YourMarketAddressHere...');
+
+async function loadMarket() {
+  try {
+    // Load market data from the blockchain
+    const market = await Market.load(connection, MARKET_ADDRESS);
+
+    console.log('Market loaded successfully!');
+    console.log('Base token (token A):', market.mintA.toBase58());
+    console.log('Quote token (token B):', market.mintB.toBase58());
+    console.log('CLMM fee:', market.clmmFeeBps, 'bps');
+    console.log('Limit fee:', market.limitFeeBps, 'bps');
+
+    return market;
+  } catch (error) {
+    if (error.message.includes('Account does not exist')) {
+      console.error('Market not found. Check the address.');
+    } else {
+      console.error('Failed to load market:', error.message);
+    }
+    throw error;
+  }
+}
+
+const market = await loadMarket();
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+use braid_sdk::Market;
+use solana_sdk::pubkey::Pubkey;
+use std::str::FromStr;
+
+// SOL/USDC market address (example)
+let market_address = Pubkey::from_str("YourMarketAddressHere...")?;
+
+// Load market data
+let market = Market::new(&rpc, market_address);
+let data = match market.fetch() {
+    Ok(d) => d,
+    Err(e) => {
+        eprintln!("Failed to load market: {}", e);
+        return Err(e.into());
+    }
+};
+
+println!("Market loaded!");
+println!("Base token: {}", data.mint_a);
+println!("Quote token: {}", data.mint_b);
+```
+  </Tab>
+</Tabs>
+
+## Step 4: Read the Orderbook
+
+See what orders are currently available:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+// Fetch limit orderbook shards
+const limitShards = await market.limitBids.fetchAllShards();
+const orderbook = limitShards.toOrderbook();
+
+// Iterate through bids (highest price first)
+for (const bid of orderbook.iterateBids()) {
+  console.log(`Bid: ${bid.base.amountRemaining} @ ${bid.base.pMin}`);
+}
+
+// Fetch CLMM orders
+const clmmShards = await market.clmmBids.fetchAllShards();
+const clmmOrderbook = clmmShards.toOrderbook();
+
+for (const position of clmmOrderbook.iterateBids()) {
+  console.log(`CLMM: ${position.base.liquidity} in range`);
+}
+```
+  </Tab>
+</Tabs>
+
+## Step 5: Place a Limit Order
+
+Place an order to buy or sell at a specific price:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+// Build the place order transaction
+const tx = await Market.placeLimitOrderIx({
+  side: Side.Bid,              // Bid = buy, Ask = sell
+  pMin: 148_000_000n,          // Lower bound $148.00 (6 decimals)
+  pMax: 150_000_000n,          // Upper bound $150.00 (6 decimals)
+  amount: 1_000_000_000n,      // 1 SOL (9 decimals)
+  owner: wallet.publicKey,
+});
+
+// Sign and send
+const signature = await sendAndConfirmTransaction(connection, tx, [wallet]);
+console.log('Order placed:', signature);
+```
+  </Tab>
+</Tabs>
+
+<Note>
+**Understanding prices and amounts**:
+- Prices are in "quote per base" (e.g., USDC per SOL)
+- Both use fixed-point integers for precision
+- SOL has 9 decimals: 1 SOL = 1,000,000,000 lamports
+- USDC has 6 decimals: 1 USDC = 1,000,000 micro-USDC
+
+To buy 1 SOL at $150: `price = 150_000_000n`, `amount = 1_000_000_000n`
+</Note>
+
+## Step 6: Execute a Swap (Market Order)
+
+Take liquidity from the orderbook immediately:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+const inputAmount = 100_000_000n;  // 100 USDC (6 decimals)
+
+// Get a quote to see expected output
+const quote = await market.getQuote({
+  side: Side.Ask,              // Buying from asks = getting base token
+  amount: inputAmount,
+});
+
+console.log('Expected output:', quote.expectedOutput);
+console.log('Price impact:', quote.priceImpact);
+
+// Calculate minimum output with slippage tolerance (0.5%)
+const minOutput = quote.expectedOutput * 995n / 1000n;
+
+// Execute the swap
+const tx = await Market.swapIx({
+  side: Side.Ask,              // Buy from asks
+  amount: inputAmount,         // How much to spend
+  minOut: minOutput,           // Minimum to receive (slippage protection)
+  limitPrice: 0n,              // 0 = no price limit (market order)
+  taker: wallet.publicKey,
+});
+
+const signature = await sendAndConfirmTransaction(connection, tx, [wallet]);
+console.log('Swap executed:', signature);
+```
+  </Tab>
+</Tabs>
+
+## Complete Example
+
+Here's everything together in one runnable file:
+
+```typescript
+// braid-quickstart.ts
+import { Connection, Keypair, PublicKey } from '@solana/web3.js';
+import { Market, Side, sendAndConfirmTransaction } from '@braid/client';
+
+async function main() {
+  // Setup
+  const connection = new Connection(process.env.RPC_URL!);
+  const wallet = Keypair.fromSecretKey(/* your key */);
+  const MARKET = new PublicKey('YourMarketAddress...');
+
+  // 1. Load market
+  const market = await Market.load(connection, MARKET);
+  console.log('Loaded market:', market.mintA.toBase58());
+
+  // 2. Read orderbook
+  const shards = await market.limitBids.fetchAllShards();
+  const orderbook = shards.toOrderbook();
+  for (const bid of orderbook.iterateBids()) {
+    console.log('Bid:', bid.base.amountRemaining, '@', bid.base.pMin);
+    break; // Just show best bid
+  }
+
+  // 3. Place a limit order
+  const orderTx = await Market.placeLimitOrderIx({
+    side: Side.Bid,
+    pMin: 148_000_000n,
+    pMax: 150_000_000n,
+    amount: 1_000_000_000n,
+    owner: wallet.publicKey,
+  });
+  await sendAndConfirmTransaction(connection, orderTx, [wallet]);
+  console.log('Order placed!');
+
+  // 4. Execute a swap
+  const swapTx = await Market.swapIx({
+    side: Side.Ask,
+    amount: 100_000_000n,
+    minOut: 600_000_000n,
+    limitPrice: 0n,
+    taker: wallet.publicKey,
+  });
+  await sendAndConfirmTransaction(connection, swapTx, [wallet]);
+  console.log('Swap complete!');
+}
+
+main().catch(console.error);
+```
+
+Run with:
+```bash
+RPC_URL=https://your-rpc-url npx ts-node braid-quickstart.ts
+```
+
+## Common Errors & Solutions
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Account does not exist` | Invalid market address | Double-check the market address |
+| `insufficient funds` | Not enough SOL for fees | Add ~0.01 SOL to your wallet |
+| `insufficient balance` | Not enough tokens to trade | Ensure you have the tokens you're trying to sell |
+| `SlippageExceeded` | Price moved too much | Increase `minOut` tolerance or retry |
+| `InsufficientLiquidity` | Order too large for available liquidity | Reduce order size |
+| `InvalidPrice` | Price outside shard range | Use a valid price for the market |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Order Types" icon="list" href="/concepts/order-types">
+    Learn about CLMM, limit, and PropAMM orders - when to use each
+  </Card>
+  <Card title="TypeScript SDK" icon="code" href="/sdk/typescript/market">
+    Full SDK reference with all methods
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Understand how sharding and matching works
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/instructions/place-order">
+    Low-level instruction documentation
+  </Card>
+</CardGroup>

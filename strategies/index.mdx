@@ -1,0 +1,490 @@
+---
+title: Trading Strategies
+description: 'Practical strategies for different trading goals using Braid order types'
+---
+
+# Trading Strategies
+
+This guide walks through common trading strategies and how to implement them effectively on Braid. Each strategy is matched with the optimal order type and includes working code examples.
+
+---
+
+## Strategy 1: Simple Trading with Limit Orders
+
+**Goal**: Buy or sell at a specific price.
+
+### Use Case: Buy the Dip
+
+You believe SOL will drop to $140 and want to accumulate:
+
+```typescript
+import { Side, Market } from '@braid/client';
+
+const BUY_PRICE = 140_000_000n;   // $140 per SOL
+const BUY_AMOUNT = 100_000_000_000n; // 100 SOL
+
+async function buyTheDip() {
+  const tx = await market.placeLimitOrder({
+    side: Side.Bid,               // Buying SOL
+    price: BUY_PRICE,
+    amount: BUY_AMOUNT,
+    owner: wallet.publicKey,
+    expiresAt: 0,                 // Never expires
+  });
+
+  await sendAndConfirmTransaction(connection, tx, [wallet]);
+  console.log(`Bid placed: 100 SOL @ $140`);
+}
+```
+
+**What happens:**
+- Your bid sits on the orderbook at $140
+- If price drops to $140 or below, market sells will fill your order
+- You accumulate SOL at your target price
+- No action needed once placed - fully automated
+
+### Use Case: Take Profit
+
+You bought SOL at $130 and want to sell at $160:
+
+```typescript
+const SELL_PRICE = 160_000_000n;  // $160 per SOL
+const SELL_AMOUNT = 50_000_000_000n; // 50 SOL
+
+async function takeProfit() {
+  const tx = await market.placeLimitOrder({
+    side: Side.Ask,               // Selling SOL
+    price: SELL_PRICE,
+    amount: SELL_AMOUNT,
+    owner: wallet.publicKey,
+    expiresAt: Math.floor(Date.now() / 1000) + 86400 * 7, // Expires in 1 week
+  });
+
+  await sendAndConfirmTransaction(connection, tx, [wallet]);
+  console.log(`Ask placed: 50 SOL @ $160, expires in 1 week`);
+}
+```
+
+---
+
+## Strategy 2: Grid Trading with Multiple Limits
+
+**Goal**: Capture profits from price oscillation by placing orders at multiple levels.
+
+### The Grid Strategy
+
+```
+            SELL LEVELS (ASKS)
+$165 ─────────── Sell 20% ────────────
+$160 ─────────── Sell 20% ────────────
+$155 ─────────── Sell 20% ────────────
+                     │
+            Current Price: $150
+                     │
+$145 ─────────── Buy 33% ─────────────
+$140 ─────────── Buy 33% ─────────────
+$135 ─────────── Buy 34% ─────────────
+            BUY LEVELS (BIDS)
+```
+
+### Implementation
+
+```typescript
+interface GridLevel {
+  price: bigint;
+  amount: bigint;
+  side: Side;
+}
+
+async function deployGrid(levels: GridLevel[]) {
+  const transactions: Transaction[] = [];
+
+  for (const level of levels) {
+    const tx = await market.placeLimitOrder({
+      side: level.side,
+      price: level.price,
+      amount: level.amount,
+      owner: wallet.publicKey,
+      expiresAt: 0,
+    });
+    transactions.push(tx);
+  }
+
+  // Batch submit for efficiency
+  for (const tx of transactions) {
+    await sendAndConfirmTransaction(connection, tx, [wallet]);
+  }
+
+  console.log(`Grid deployed: ${levels.length} orders`);
+}
+
+// Example: Deploy a grid around $150
+const grid: GridLevel[] = [
+  // Sells (asks)
+  { price: 165_000_000n, amount: 20_000_000_000n, side: Side.Ask },
+  { price: 160_000_000n, amount: 20_000_000_000n, side: Side.Ask },
+  { price: 155_000_000n, amount: 20_000_000_000n, side: Side.Ask },
+  // Buys (bids)
+  { price: 145_000_000n, amount: 33_000_000_000n, side: Side.Bid },
+  { price: 140_000_000n, amount: 33_000_000_000n, side: Side.Bid },
+  { price: 135_000_000n, amount: 34_000_000_000n, side: Side.Bid },
+];
+
+await deployGrid(grid);
+```
+
+### Pros and Cons
+
+| Pros | Cons |
+|------|------|
+| Captures oscillation profits | Capital tied up in orders |
+| Fully automated | Misses strong trends |
+| Works 24/7 | Requires rebalancing |
+
+---
+
+## Strategy 3: Concentrated Liquidity (CLMM)
+
+**Goal**: Earn trading fees by providing two-sided liquidity in a price range.
+
+### Understanding CLMM
+
+CLMM is like grid trading, but:
+- Liquidity is continuous (not discrete levels)
+- Filled positions automatically flip to the other side
+- You earn fees on every trade in your range
+
+```
+Traditional Grid:           CLMM Position:
+│  Discrete levels          │  Continuous range
+│                           │
+├─ Sell @ $160              │      ╭──────────╮
+├─ Sell @ $155              │    ╱            ╲
+├─ Sell @ $150    vs.       │  ╱                ╲
+├─ Buy @ $145               │╱                    ╲
+├─ Buy @ $140               └──────────────────────▶
+                           $140                  $160
+```
+
+### Basic CLMM Position
+
+```typescript
+import { placeClmmPosition, Side } from '@braid/client';
+
+async function provideConcentratedLiquidity() {
+  // Provide $10,000 worth of liquidity between $145-$155
+  const tx = await placeClmmPosition({
+    market: marketAddress,
+    side: Side.Ask,               // Start with SOL to sell
+    pMin: 145_000_000n,           // Lower bound: $145
+    pMax: 155_000_000n,           // Upper bound: $155
+    amount: 66_000_000_000n,      // ~66 SOL (~$10,000 at $150)
+    owner: wallet.publicKey,
+  });
+
+  await sendAndConfirmTransaction(connection, tx, [wallet]);
+  console.log(`CLMM position opened: $145-$155 range`);
+}
+```
+
+### The Flip Mechanism
+
+When your CLMM order fills, the filled amount flips to the opposite side:
+
+```
+Initial:
+  ASK: 66 SOL worth @ $145-$155
+  BID: 0 (empty, linked to ASK)
+
+After someone buys 30 SOL:
+  ASK: 36 SOL worth @ $152-$155 (remaining)
+  BID: ~$4,500 worth @ $145-$152 (flipped!)
+
+If price drops, you buy back. If it rises, you sell more.
+This is automatic market making.
+```
+
+### Range Selection Guide
+
+| Range Width | Fee Capture | IL Risk | Best For |
+|-------------|-------------|---------|----------|
+| ±2% | Very High | Very High | Active management, volatile pairs |
+| ±5% | High | High | Daily monitoring |
+| ±10% | Medium | Medium | Weekly management |
+| ±25% | Low | Low | Passive, stable pairs |
+
+```typescript
+// Narrow range for aggressive fee capture
+const narrowRange = {
+  pMin: currentPrice * 98n / 100n,  // -2%
+  pMax: currentPrice * 102n / 100n, // +2%
+};
+
+// Wide range for passive income
+const wideRange = {
+  pMin: currentPrice * 75n / 100n,  // -25%
+  pMax: currentPrice * 125n / 100n, // +25%
+};
+```
+
+### Impermanent Loss Warning
+
+<Warning>
+CLMM positions have **impermanent loss (IL)** risk. If price moves outside your range:
+- All your liquidity converts to the less valuable token
+- You hold 100% of whichever token decreased in value
+- The loss becomes "permanent" if you withdraw
+
+Only use CLMM if you understand and accept this risk.
+</Warning>
+
+---
+
+## Strategy 4: MEV-Protected Large Trades (PropAMM)
+
+**Goal**: Execute large trades without being front-run or sandwiched.
+
+### When to Use PropAMM
+
+- Trade size > $10,000
+- Price-sensitive execution
+- Any trade where MEV bots might target you
+
+### Basic PropAMM Trade
+
+```typescript
+import {
+  placePropOrder,
+  take,
+  Side,
+  getCurrentSlot
+} from '@braid/client';
+
+async function mevProtectedSwap(inputAmount: bigint, minOutput: bigint) {
+  const currentSlot = await getCurrentSlot(connection);
+
+  // Step 1: Place PropAMM order (valid only this slot)
+  const placeTx = await market.placePropOrder({
+    side: Side.Bid,
+    slot: currentSlot,
+    price: 155_000_000n,          // Limit price: $155 max
+    amount: inputAmount,
+    owner: wallet.publicKey,
+  });
+
+  // Step 2: Take against your own order (atomic bundle)
+  const takeTx = await Market.swapIx({
+    side: Side.Ask,
+    amount: inputAmount,
+    minOut: minOutput,
+    limitPrice: 0n,
+  });
+
+  // Submit as bundle for atomicity
+  await sendBundle(connection, [placeTx, takeTx], [wallet]);
+
+  console.log(`MEV-protected swap complete`);
+}
+```
+
+### Private Submission (Maximum Protection)
+
+For the strongest protection, submit through a private channel:
+
+```typescript
+import { Jito } from '@jito-labs/sdk';
+
+async function privateSwap() {
+  const jito = new Jito(connection);
+
+  // Build bundle
+  const bundle = await jito.createBundle([
+    propAmmPlaceTx,
+    takeTx,
+  ]);
+
+  // Submit privately (never hits public mempool)
+  await jito.sendBundle(bundle, {
+    tip: 10000, // Optional tip for priority
+  });
+}
+```
+
+---
+
+## Strategy 5: Accumulation Strategy
+
+**Goal**: Accumulate a token over time at favorable prices.
+
+### Dollar-Cost Averaging with Limits
+
+```typescript
+async function dcaWithLimits(
+  totalBudget: bigint,
+  numLevels: number,
+  priceRangePercent: number
+) {
+  const currentPrice = await market.getMidPrice();
+  const amountPerLevel = totalBudget / BigInt(numLevels);
+
+  const levels: GridLevel[] = [];
+
+  for (let i = 0; i < numLevels; i++) {
+    // Each level is further below current price
+    const discount = (i + 1) * priceRangePercent / numLevels;
+    const price = currentPrice * BigInt(100 - discount) / 100n;
+
+    levels.push({
+      price,
+      amount: amountPerLevel,
+      side: Side.Bid,
+    });
+  }
+
+  await deployGrid(levels);
+  console.log(`DCA grid: ${numLevels} levels from ${priceRangePercent}% discount`);
+}
+
+// Example: $10,000 budget, 5 levels, 10% range
+// Places bids at -2%, -4%, -6%, -8%, -10% from current price
+await dcaWithLimits(10_000_000_000n, 5, 10);
+```
+
+### Exponential Accumulation
+
+Buy more as price drops further (buying bigger dips):
+
+```typescript
+async function exponentialAccumulation(
+  baseBudget: bigint,
+  numLevels: number,
+  baseDiscount: number,
+  exponent: number // e.g., 1.5 for 50% increase per level
+) {
+  const currentPrice = await market.getMidPrice();
+  const levels: GridLevel[] = [];
+
+  for (let i = 0; i < numLevels; i++) {
+    const discount = baseDiscount * (i + 1);
+    const price = currentPrice * BigInt(100 - discount) / 100n;
+
+    // Amount increases exponentially with depth
+    const multiplier = Math.pow(exponent, i);
+    const amount = BigInt(Math.floor(Number(baseBudget) * multiplier));
+
+    levels.push({ price, amount, side: Side.Bid });
+  }
+
+  await deployGrid(levels);
+}
+
+// Buy more as it dips more
+// Level 1: $1000 @ -3%
+// Level 2: $1500 @ -6%
+// Level 3: $2250 @ -9%
+// Level 4: $3375 @ -12%
+await exponentialAccumulation(1_000_000_000n, 4, 3, 1.5);
+```
+
+---
+
+## Strategy 6: Distribution Strategy
+
+**Goal**: Sell holdings at favorable prices over time.
+
+### Layered Profit Taking
+
+```typescript
+async function layeredDistribution(
+  holdings: bigint,
+  numLevels: number,
+  profitRangePercent: number
+) {
+  const currentPrice = await market.getMidPrice();
+  const amountPerLevel = holdings / BigInt(numLevels);
+
+  const levels: GridLevel[] = [];
+
+  for (let i = 0; i < numLevels; i++) {
+    const premium = (i + 1) * profitRangePercent / numLevels;
+    const price = currentPrice * BigInt(100 + premium) / 100n;
+
+    levels.push({
+      price,
+      amount: amountPerLevel,
+      side: Side.Ask,
+    });
+  }
+
+  await deployGrid(levels);
+  console.log(`Distribution: sell at +${profitRangePercent/numLevels}% to +${profitRangePercent}%`);
+}
+
+// Sell 100 SOL in 5 tranches at +2%, +4%, +6%, +8%, +10%
+await layeredDistribution(100_000_000_000n, 5, 10);
+```
+
+---
+
+## Strategy Comparison
+
+| Strategy | Complexity | Capital Efficiency | Risk | Best For |
+|----------|------------|-------------------|------|----------|
+| Simple Limit | Low | Medium | Low | Beginners |
+| Grid Trading | Medium | Low | Medium | Range-bound markets |
+| CLMM | High | Very High | High | Active market makers |
+| PropAMM | Medium | High | Low | Large trades |
+| Accumulation | Low | Medium | Low | Long-term holders |
+| Distribution | Low | Medium | Low | Profit taking |
+
+---
+
+## Advanced: Combining Strategies
+
+The most effective approach often combines multiple strategies:
+
+```typescript
+async function combinedStrategy() {
+  // 1. Core position: CLMM for fee income
+  await placeClmmPosition({
+    pMin: 140_000_000n,
+    pMax: 160_000_000n,
+    amount: 50_000_000_000n, // 50% of capital
+    side: Side.Ask,
+  });
+
+  // 2. Accumulation layer: limit bids below range
+  await market.placeLimitOrder({
+    side: Side.Bid,
+    price: 135_000_000n,
+    amount: 25_000_000_000n, // 25% of capital
+  });
+
+  // 3. Distribution layer: limit asks above range
+  await market.placeLimitOrder({
+    side: Side.Ask,
+    price: 165_000_000n,
+    amount: 25_000_000_000n, // 25% of capital
+  });
+
+  console.log('Combined strategy deployed');
+}
+```
+
+This gives you:
+- Fee income from the CLMM range
+- Cheap accumulation if price crashes
+- Profit taking if price moons
+
+---
+
+## Quick Reference
+
+<CardGroup cols={2}>
+  <Card title="Order Types" icon="layer-group" href="/concepts/order-types">
+    Compare limit, CLMM, and PropAMM
+  </Card>
+  <Card title="SDK Reference" icon="code" href="/sdk/typescript/orders">
+    Full API documentation
+  </Card>
+</CardGroup>

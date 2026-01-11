@@ -1,0 +1,102 @@
+---
+title: Orderbook Parsing
+description: 'Parse and iterate orderbook data'
+---
+
+# Orderbook Parsing
+
+The Rust SDK provides efficient zero-copy parsing of orderbook shard data.
+
+## Parse Shard Data
+
+```rust
+use braid_sdk::orderbook::{LimitOrderbook, ClmmOrderbook};
+
+// Fetch raw account data
+let data = rpc.get_account_data(&shard_address)?;
+
+// Parse limit orderbook
+let orderbook = LimitOrderbook::new(&data);
+
+// Iterate bids (best to worst)
+for order in orderbook.bids() {
+    println!("Bid: {} @ {}", order.amount, order.price);
+}
+
+// Iterate asks (best to worst)
+for order in orderbook.asks() {
+    println!("Ask: {} @ {}", order.amount, order.price);
+}
+```
+
+## CLMM Orderbook
+
+```rust
+use braid_sdk::orderbook::ClmmOrderbook;
+
+let orderbook = ClmmOrderbook::new(&data);
+
+for order in orderbook.asks() {
+    println!("CLMM Ask: {} in range [{}, {}]",
+        order.amount,
+        order.p_min,
+        order.p_max
+    );
+}
+```
+
+## Owned Variants
+
+For async contexts, use owned variants that don't borrow:
+
+```rust
+use braid_sdk::orderbook::OwnedLimitOrderbook;
+
+// Owns the data (no lifetime)
+let orderbook = OwnedLimitOrderbook::new(data);
+
+// Can be stored in structs, moved across await points
+for order in orderbook.bids() {
+    println!("{:?}", order);
+}
+```
+
+## Header Access
+
+```rust
+let orderbook = LimitOrderbook::new(&data);
+let header = orderbook.header();
+
+println!("Shard idx: {}", header.shard_idx);
+println!("Price range: {} - {}", header.min_price, header.max_price);
+println!("Bid count: {}", header.bids.count);
+println!("Ask count: {}", header.asks.count);
+println!("Next bids shard: {:?}", header.next_bids_shard);
+println!("Next asks shard: {:?}", header.next_asks_shard);
+```
+
+## Order Structure
+
+```rust
+// Limit order fields
+pub struct LimitOrder {
+    pub p_min: u64,
+    pub p_max: u64,
+    pub amount_remaining: u64,
+    pub full_amount: u64,
+    pub owner: [u8; 32],
+    pub order_id: u64,
+    pub side: Side,
+}
+
+// CLMM order fields
+pub struct ClmmOrder {
+    pub p_min: u64,
+    pub p_max: u64,
+    pub amount_remaining: u64,
+    pub full_amount: u64,
+    pub inverse_idx: u32,
+    pub owner: [u8; 32],
+    pub order_id: u64,
+}
+```

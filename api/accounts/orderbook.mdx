@@ -1,0 +1,61 @@
+---
+title: Orderbook Accounts
+description: 'Shard account structures'
+---
+
+# Orderbook Accounts
+
+Orderbook data is stored in shard accounts, one per order type.
+
+## ClmmOrders (Shard)
+
+```
+Seeds: ["clmm_orders", market, shard_idx]
+```
+
+Contains CLMM orders within a price range.
+
+## LimitOrders (Shard)
+
+```
+Seeds: ["limit_orders", market, shard_idx]
+```
+
+Contains limit orders within a price range.
+
+## PropAmmOrders
+
+```
+Seeds: ["prop_amm_orders", market]
+```
+
+Non-sharded account for PropAMM orders.
+
+## Shard Header
+
+All shard types share a common header structure:
+
+```rust
+struct BaseShardHeader {
+    discriminator: [u8; 8],
+    self_pubkey: Address,
+    market: Address,
+    market_id: u64,
+    bids: SideState,
+    asks: SideState,
+    capacity: u32,
+    last_updated_at: i64,
+    next_order_id: u64,
+    next_bids_shard: Address,     // Toward lower prices (worse bids)
+    next_asks_shard: Address,     // Toward higher prices (worse asks)
+    next_bids_shard_idx: u64,
+    next_asks_shard_idx: u64,
+    shard_idx: u64,
+    min_price: u64,
+    max_price: u64,
+    shard_flags: u8,
+    bump: u8,
+    migration_direction: u8,
+    pending_migration: u32,
+}
+```

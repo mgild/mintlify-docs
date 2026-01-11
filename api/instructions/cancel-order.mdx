@@ -1,0 +1,50 @@
+---
+title: Cancel Order
+description: 'Cancel limit, CLMM, or PropAMM orders'
+---
+
+# Cancel Order Instructions
+
+## CancelLimitOrder
+
+Cancels a limit order and refunds tokens.
+
+### Parameters
+```rust
+struct CancelLimitOrderParams {
+    idx: u32,
+    side: u8,
+}
+```
+
+---
+
+## CancelClmmPosition
+
+Cancels a CLMM position (both primary and inverse orders).
+
+### Parameters
+```rust
+struct CancelClmmPositionParams {
+    idx: u32,
+    side: u8,
+}
+```
+
+<Note>
+Cancelling a CLMM position refunds from **both** vaults since liquidity may have flipped.
+</Note>
+
+---
+
+## CancelPropOrder
+
+Cancels a PropAMM order.
+
+### Parameters
+```rust
+struct CancelPropOrderParams {
+    idx: u32,
+    side: u8,
+}
+```

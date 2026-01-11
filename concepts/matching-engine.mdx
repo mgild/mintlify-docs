@@ -1,0 +1,707 @@
+---
+title: Matching Engine
+description: 'How Braid routes and fills orders'
+---
+
+# Matching Engine
+
+The matching engine is the heart of Braid - it's the code that finds the best prices and executes trades. This page explains how it works, from simple concepts to detailed algorithms.
+
+## What Is a Matching Engine?
+
+When you want to swap USDC for SOL, someone else needs to be willing to sell SOL for USDC. The matching engine's job is to:
+
+1. **Find sellers** with the best prices
+2. **Match** your buy with their sell
+3. **Execute** the trade (move tokens)
+
+```mermaid
+
+flowchart LR
+    Input["Your swap request<br/>'Buy SOL with 1000 USDC'"] --> Engine
+
+    subgraph Engine["MATCHING ENGINE"]
+        E1["1. Find best prices"]
+        E2["2. Fill orders"]
+        E3["3. Transfer tokens"]
+        E1 --> E2 --> E3
+    end
+
+    Engine --> Output["Trade executed!<br/>'You received 6.5 SOL'"]
+
+    style Input fill:#21252b,stroke:#61afef,color:#abb2bf
+    style Output fill:#21252b,stroke:#98c379,color:#abb2bf
+    style Engine fill:#21252b,stroke:#c678dd,color:#abb2bf
+```
+
+## Multi-Source Routing
+
+Unlike simple DEXs that only have one source of liquidity, Braid has **three different order types** competing to fill your trade:
+
+```mermaid
+
+flowchart TB
+    Swap["Your Swap: 'Buy SOL'"] --> Engine
+
+    subgraph Engine["MATCHING ENGINE"]
+        direction TB
+        subgraph Sources[" "]
+            direction LR
+            PropAMM["PropAMM<br/>$150.08"]
+            CLMM["CLMM<br/>$150.05<br/>BEST"]
+            Limit["Limit Orders<br/>$150.12"]
+        end
+        Sources --> Fill["Fill from CLMM first!"]
+    end
+
+    style Swap fill:#21252b,stroke:#61afef,color:#abb2bf
+    style PropAMM fill:#21252b,stroke:#3e4451,color:#abb2bf
+    style CLMM fill:#21252b,stroke:#98c379,color:#abb2bf
+    style Limit fill:#21252b,stroke:#3e4451,color:#abb2bf
+    style Fill fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+The engine always picks the **best price** regardless of order type. This means:
+- You get the best execution
+- Order types compete on price
+- Liquidity providers are incentivized to offer good prices
+
+## How a Swap Works (Step by Step)
+
+Let's trace through a real swap: **Buy SOL with 100 USDC**
+
+### Step 1: Submit the Swap
+
+```typescript
+const ix = Market.swapIx({
+  side: Side.Ask,              // Buying from asks
+  amount: 100_000_000n,        // 100 USDC
+  minOut: 650_000_000n,        // At least 0.65 SOL (slippage protection)
+  limitPrice: 0n,              // No price limit (market order)
+  // ... other required accounts
+});
+```
+
+### Step 2: Find Best Prices
+
+The engine queries all order sources:
+
+```
+Checking prices...
+
+PropAMM Orders:
+  Best ask: $153.50 (10 SOL available)
+
+CLMM Orders:
+  Shard 0: No asks in range
+  Shard 1: Best ask: $150.05 (5 SOL available)
+  Shard 2: Best ask: $151.20 (8 SOL available)
+
+Limit Orders:
+  Shard 1: Best ask: $150.50 (3 SOL available)
+  Shard 2: Best ask: $152.00 (12 SOL available)
+
+Winner: CLMM Shard 1 @ $150.05
+```
+
+### Step 3: Fill the Best Order
+
+```
+Filling from CLMM @ $150.05...
+
+Your 100 USDC can buy: 100 / 150.05 = 0.6664 SOL
+But only 5 SOL available at this price.
+
+Actually fill: 0.6664 SOL (order fully consumed)
+Remaining to fill: 0 (we're done!)
+
+Total output: 0.6664 SOL
+```
+
+### Step 4: Transfer Tokens
+
+```
+Token transfers:
+  You → Vault:    100 USDC
+  Vault → You:    0.6631 SOL (after 0.5% fee)
+
+Transaction complete!
+```
+
+## Swap Parameters Explained
+
+When you call `take()`, you provide these parameters:
+
+```typescript
+interface TakeParams {
+  amount: bigint;        // How much you're spending
+  minOut: bigint;        // Minimum you'll accept (slippage protection)
+  limitPrice: bigint;    // Max price you'll pay (0 = no limit)
+  side: Side;            // Ask = buying base, Bid = selling base
+  minOrderBips: number;  // Skip tiny orders (saves compute)
+  maxOrders: number;     // Max orders to fill (saves compute)
+}
+```
+
+### Understanding Each Parameter
+
+| Parameter | What It Does | Example |
+|-----------|--------------|---------|
+| `amount` | Input amount to swap | `100_000_000n` = 100 USDC |
+| `minOut` | Revert if output below this | `650_000_000n` = 0.65 SOL |
+| `limitPrice` | Stop filling above/below this | `155_000_000n` = $155 max |
+| `side` | Direction of trade | `Ask` = buy, `Bid` = sell |
+| `minOrderBips` | Skip orders smaller than X% | `100` = skip orders &lt;1% |
+| `maxOrders` | Stop after N fills | `10` = max 10 orders |
+
+### Slippage Protection
+
+The `minOut` parameter protects you from bad fills:
+
+```
+Without minOut:
+  You submit: Buy SOL with 100 USDC
+  Price moves while tx pending
+  You receive: 0.5 SOL (terrible rate!)
+
+With minOut = 0.65 SOL:
+  You submit: Buy SOL with 100 USDC, minOut = 0.65
+  Price moves while tx pending
+  Output would be: 0.5 SOL
+  Transaction REVERTS (you keep your USDC!)
+```
+
+<Note>
+**Tip**: Calculate `minOut` as `expectedOutput * (1 - slippageTolerance)`. For 1% slippage: `minOut = expectedOutput * 99n / 100n`.
+</Note>
+
+## The Matching Algorithm
+
+Here's the actual algorithm the matching engine uses:
+
+```
+ALGORITHM: OrderbookTake
+
+INPUT: amount, minOut, limitPrice, side, maxOrders
+
+total_output = 0
+amount_remaining = amount
+orders_touched = 0
+skips = 0
+
+WHILE amount_remaining > 0 AND orders_touched < maxOrders:
+
+    // 1. Find best price from all sources
+    best = null
+    FOR EACH source IN [PropAMM, CLMM, Limit]:
+        candidate = source.getBestOrder(side)
+        IF candidate != null AND isBetter(candidate, best, side):
+            best = candidate
+
+    // 2. Check if we should stop
+    IF best == null:
+        BREAK  // No more orders
+
+    IF limitPrice > 0 AND violatesLimit(best.price, limitPrice, side):
+        BREAK  // Hit price limit
+
+    IF best.amount < amount_remaining * minOrderBips / 10000:
+        skips++
+        IF skips > MAX_SKIPS:
+            BREAK
+        source.skipOrder(best)
+        CONTINUE
+
+    // 3. Calculate fill
+    fill_amount = MIN(best.amount, amount_remaining)
+    output = calculateOutput(fill_amount, best.price, side)
+
+    // 4. Execute fill
+    source.fill(best, fill_amount)
+    total_output += output
+    amount_remaining -= fill_amount
+    orders_touched++
+
+// 5. Check slippage
+IF total_output < minOut:
+    REVERT("SlippageExceeded")
+
+// 6. Transfer tokens
+transfer(taker → vault_in, amount - amount_remaining)
+transfer(vault_out → taker, total_output - fees)
+
+RETURN total_output
+```
+
+## Order Type Fill Behavior
+
+Each order type fills slightly differently:
+
+<Tabs>
+  <Tab title="Limit Orders">
+    **Simple fill**: Reduce order amount, remove if empty.
+
+    ```
+    Before: Order #42: Sell 10 SOL @ $150
+    Fill: 6 SOL
+
+    After: Order #42: Sell 4 SOL @ $150
+           (order stays in book with reduced size)
+
+    If fill = 10 SOL:
+    After: Order #42 removed from book
+    ```
+  </Tab>
+  <Tab title="CLMM Orders">
+    **Fill with flip**: Filled amount moves to inverse side.
+
+    ```
+    Before:
+      Primary ASK: Sell 10 SOL @ $150-160
+      Inverse BID: Buy 0 SOL worth
+
+    Fill: 6 SOL from ASK
+
+    After:
+      Primary ASK: Sell 4 SOL @ $155-160 (remaining range)
+      Inverse BID: Buy ~$900 worth @ $150-155 (flipped!)
+
+    The filled portion becomes liquidity on the other side.
+    This is automatic market making!
+    ```
+  </Tab>
+  <Tab title="PropAMM Orders">
+    **Slot-scoped fill**: Same as limit, but order expires after slot.
+
+    ```
+    Slot 12345:
+      Order #99: Sell 10 SOL @ $150 (slot 12345)
+      Fill: 6 SOL
+      After: Order #99: Sell 4 SOL @ $150
+
+    Slot 12346:
+      Order #99 expires automatically
+      (any unfilled portion is gone)
+    ```
+  </Tab>
+</Tabs>
+
+## Protection Mechanisms
+
+The matching engine has several protections against abuse:
+
+### Compute Unit Protection
+
+| Mechanism | Purpose |
+|-----------|---------|
+| `maxOrders` | Cap fills to stay within CU budget |
+| `MAX_SKIPS` (32) | Don't waste CU on tiny orders |
+| `minOrderBips` | Skip dust orders |
+
+### Price Protection
+
+| Mechanism | Purpose |
+|-----------|---------|
+| `limitPrice` | Stop if price exceeds limit |
+| `minOut` | Revert if output too low |
+
+### Example: Avoiding Dust Griefing
+
+Without protection, an attacker could place thousands of 0.00001 SOL orders:
+
+```
+Attack: 1000 orders of 0.00001 SOL each
+Your swap: Buy 1 SOL
+
+Without protection:
+  Fill order 1: 0.00001 SOL (500 CU)
+  Fill order 2: 0.00001 SOL (500 CU)
+  ...
+  Transaction runs out of compute units!
+
+With minOrderBips = 100 (1%):
+  Order 1: 0.00001 SOL < 1% of 1 SOL → SKIP
+  Order 2: 0.00001 SOL < 1% of 1 SOL → SKIP
+  After 32 skips: Stop trying small orders
+  Fill from real orders
+```
+
+## Getting Quotes
+
+Before executing a swap, you can get a quote to see expected output:
+
+```typescript
+import { Side } from '@braid/client';
+
+// Get quote for buying SOL with 100 USDC
+const quote = await market.getQuote({
+  side: Side.Ask,
+  amount: 100_000_000n,  // 100 USDC
+});
+
+console.log('Expected output:', quote.expectedOutput);   // e.g., 666400000n (0.6664 SOL)
+console.log('Price impact:', quote.priceImpact);        // e.g., 0.05 (0.05%)
+console.log('Orders to fill:', quote.ordersToFill);     // e.g., 3
+
+// Calculate minOut with 0.5% slippage tolerance
+const minOut = quote.expectedOutput * 995n / 1000n;
+```
+
+---
+
+## Technical Deep Dive
+
+<Accordion title="Output Calculation">
+
+The output for each fill depends on the trade direction:
+
+```rust
+// Price is expressed as: quote_per_base * 10^base_decimals
+// Example: $150 = 150_000_000 (with 6 decimal USDC)
+
+fn calculate_output(fill: u64, price: u64, side: Side, base_scale: u64) -> u64 {
+    match side {
+        // Buying base (giving quote): output = input * base_scale / price
+        Side::Ask => fill * base_scale / price,
+
+        // Selling base (giving base): output = input * price / base_scale
+        Side::Bid => fill * price / base_scale,
+    }
+}
+```
+
+### Example Calculation
+
+Buy SOL with 100 USDC at $150:
+- `fill = 100_000_000` (100 USDC, 6 decimals)
+- `price = 150_000_000` ($150 in 6 decimals)
+- `base_scale = 1_000_000_000` (SOL has 9 decimals)
+
+```
+output = 100_000_000 * 1_000_000_000 / 150_000_000
+       = 100_000_000_000_000_000 / 150_000_000
+       = 666_666_666 (0.666... SOL)
+```
+
+</Accordion>
+
+<Accordion title="Fee Distribution">
+
+Fees are collected during matching and distributed as follows:
+
+```mermaid
+
+flowchart TB
+    Total["Total Fee<br/>= fill_amount * fee_bps / 10000"]
+    Total --> Protocol["Protocol Fee<br/>(goes to protocol treasury)<br/>= Total Fee * protocol_fee_bps / 10000"]
+    Total --> LP["LP Fee<br/>(goes to order owner)<br/>= Total Fee - Protocol Fee"]
+    Protocol --> Referral["Referral Fee (optional)<br/>= Protocol Fee * referral_bps / 10000"]
+
+    style Total fill:#21252b,stroke:#61afef,color:#abb2bf
+    style Protocol fill:#21252b,stroke:#c678dd,color:#abb2bf
+    style LP fill:#21252b,stroke:#98c379,color:#abb2bf
+    style Referral fill:#21252b,stroke:#e5c07b,color:#abb2bf
+```
+
+### Fee Example
+
+10 SOL fill, 30 bps fee, 10% protocol cut:
+
+```
+Total fee:     10 SOL * 30 / 10000 = 0.03 SOL
+Protocol fee:  0.03 SOL * 10 / 100 = 0.003 SOL
+LP fee:        0.03 - 0.003 = 0.027 SOL
+
+Final: LP gets 0.027 SOL, protocol gets 0.003 SOL
+```
+
+</Accordion>
+
+<Accordion title="Price Comparison Logic">
+
+The engine must compare prices correctly for each side:
+
+```rust
+fn is_better_price(a: u64, b: u64, side: Side) -> bool {
+    match side {
+        // For asks (buying base): lower price is better
+        // You want to pay LESS per unit
+        Side::Ask => a < b,
+
+        // For bids (selling base): higher price is better
+        // You want to receive MORE per unit
+        Side::Bid => a > b,
+    }
+}
+
+fn violates_limit(order_price: u64, limit: u64, side: Side) -> bool {
+    if limit == 0 { return false; } // No limit set
+
+    match side {
+        // For asks: order price must be <= limit
+        Side::Ask => order_price > limit,
+
+        // For bids: order price must be >= limit
+        Side::Bid => order_price < limit,
+    }
+}
+```
+
+</Accordion>
+
+<Accordion title="Compute Unit Breakdown">
+
+Typical CU costs for matching operations:
+
+| Operation | CU Cost | Notes |
+|-----------|---------|-------|
+| Load market | ~3,000 | Account deserialization |
+| Load shard | ~5,000 | Per shard loaded |
+| Find best price | ~1,000 | Per source queried |
+| Fill limit order | ~8,000 | Tree update included |
+| Fill CLMM order | ~12,000 | Includes flip to inverse |
+| Fill PropAMM order | ~8,000 | Similar to limit |
+| Token transfer | ~3,000 | Per transfer (2 per swap) |
+
+### Transaction Budget
+
+A typical swap uses:
+- Market load: 3,000 CU
+- 6 shards: 30,000 CU
+- Best price (3 sources): 3,000 CU
+- 5 fills: 40,000-60,000 CU
+- Transfers: 6,000 CU
+
+**Total: ~90,000 CU** (well under 1.4M limit)
+
+</Accordion>
+
+---
+
+## Newton-Raphson Optimal Matching
+
+Braid's matching engine uses the Newton-Raphson algorithm to find the **optimal equilibrium price** that maximizes output across all liquidity sources simultaneously.
+
+<Note>
+**Why Newton-Raphson?** Simple greedy matching (fill best price first) can miss opportunities where splitting across multiple orders gives better total output. Newton-Raphson finds the mathematically optimal allocation.
+</Note>
+
+### The Optimization Problem
+
+Given input amount `I` and a set of order curves, find the equilibrium price `P*` such that:
+
+$$
+\sum_{i} f_i(P^*) = I
+$$
+
+Where `f_i(P*)` is the fill amount for order i at price P*.
+
+```
+Example: Two overlapping CLMM orders
+
+Order A: 100 SOL @ $150-160 (exponent n=2)
+Order B: 80 SOL @ $148-155 (exponent n=2)
+
+Input: 50 SOL worth of buying pressure
+
+Greedy approach:
+  Fill Order B first (starts at lower price $148)
+  Then fill Order A
+
+Optimal approach:
+  Find P* where filling both orders proportionally
+  gives better average price than greedy
+
+The Newton-Raphson algorithm finds P* in ~3 iterations.
+```
+
+### The Algorithm
+
+Newton-Raphson iteratively refines a price guess until it converges:
+
+```rust
+/// Find equilibrium price using Newton-Raphson
+fn find_equilibrium_price(
+    orders: &[OrderCurve],
+    target_input: u64,
+) -> u64 {
+    // Initial guess: weighted average of order prices
+    let mut price = weighted_average_price(orders);
+
+    for _ in 0..MAX_NEWTON_ITERS {
+        // Calculate total fill at current price
+        let total_fill = orders.iter()
+            .map(|o| o.fill_to_price(price))
+            .sum::<u64>();
+
+        // Calculate slope (derivative of fill w.r.t. price)
+        let total_slope = orders.iter()
+            .map(|o| o.slope_at_price(price))
+            .sum::<u64>();
+
+        // Newton step: price_new = price - f(price) / f'(price)
+        let error = total_fill as i128 - target_input as i128;
+        let adjustment = error * SLOPE_SCALE as i128 / total_slope as i128;
+
+        let new_price = (price as i128 - adjustment) as u64;
+
+        // Check convergence
+        if (new_price as i128 - price as i128).abs() <= NEWTON_EPSILON {
+            return new_price;
+        }
+
+        price = new_price;
+    }
+
+    price
+}
+```
+
+### Key Constants
+
+```rust
+const MAX_NEWTON_ITERS: u32 = 3;      // Sufficient for ~40 bips accuracy
+const NEWTON_EPSILON: u64 = 1;         // Convergence tolerance
+const SLOPE_SCALE: u64 = 1_000_000_000; // 1e9 for precision
+const MAX_ACTIVE_SET: usize = 512;     // Max orders per matching round
+```
+
+### Slope Calculation
+
+The slope of an order curve is the derivative of fill with respect to price:
+
+$$
+\frac{df}{dP} = \frac{L \cdot (n+1)}{P_{max} - P_{min}} \cdot t(P)^n
+$$
+
+For flat orders (limit orders), the slope is infinite at the limit price (step function), which the algorithm handles specially:
+
+```rust
+fn slope_at_price(&self, price: u64) -> u64 {
+    if self.is_flat() {
+        // Flat orders: infinite slope at limit price
+        // Return a very large value to dominate the sum
+        return u64::MAX / 1000;
+    }
+
+    // Power-law curve: calculate derivative
+    let t = self.normalized_position(price);
+    let range = self.p_max - self.p_min;
+
+    // slope = L * (n+1) / range * t^n
+    let t_power = power_exp(t, self.exponent);
+    self.liquidity * (self.exponent as u64 + 1) * t_power / range
+}
+```
+
+### Three-Phase Matching
+
+The complete matching algorithm has three phases:
+
+```
+PHASE 1: COLLECT
+──────────────────
+Gather all qualifying orders into "active set"
+  - PropAMM orders from current/last slot
+  - CLMM orders from loaded shards
+  - Limit orders from loaded shards
+  - CP-AMM modeled as single virtual order
+
+Active set size: up to MAX_ACTIVE_SET (512) orders
+
+
+PHASE 2: SOLVE (Newton-Raphson)
+────────────────────────────────
+1. Compute initial price guess (weighted average)
+2. For each iteration (max 3):
+   a. Sum fills at current price
+   b. Sum slopes at current price
+   c. Compute Newton step
+   d. Check convergence (epsilon = 1)
+3. Return equilibrium price P*
+
+
+PHASE 3: EXECUTE
+─────────────────
+For each order in active set:
+  1. Compute fill amount at P*
+  2. Apply to order (reduce remaining, flip if CLMM)
+  3. Accumulate fees and outputs
+  4. Update tree positions
+
+Transfer tokens between taker and vaults
+```
+
+### Convergence Visualization
+
+```
+Iteration 1:
+  Price guess: $151.00
+  Total fill: 45 SOL (need 50)
+  Slope: 2.3 SOL/$
+  Adjustment: +$2.17
+  New price: $153.17
+
+Iteration 2:
+  Price guess: $153.17
+  Total fill: 49.2 SOL (need 50)
+  Slope: 1.8 SOL/$
+  Adjustment: +$0.44
+  New price: $153.61
+
+Iteration 3:
+  Price guess: $153.61
+  Total fill: 49.98 SOL (need 50)
+  Converged! (error < epsilon)
+
+Final equilibrium price: $153.61
+```
+
+### Why 3 Iterations Suffice
+
+Newton-Raphson has quadratic convergence - each iteration doubles the number of accurate digits:
+
+| Iteration | Error (bips) | Accuracy |
+|-----------|-------------|----------|
+| 0 (guess) | ~1000 bips | ~10% |
+| 1 | ~100 bips | ~1% |
+| 2 | ~10 bips | ~0.1% |
+| 3 | &lt;1 bip | ~0.01% |
+
+For trading, &lt;1 bip error is more than sufficient - the fee spread is typically 10-30 bips.
+
+### Handling Edge Cases
+
+```rust
+// Edge case 1: Single flat order
+if active_set.len() == 1 && active_set[0].is_flat() {
+    // No optimization needed - fill at limit price
+    return active_set[0].limit_price;
+}
+
+// Edge case 2: All orders have same price
+if all_same_price(&active_set) {
+    // Pro-rata fill at common price
+    return active_set[0].price();
+}
+
+// Edge case 3: Input exceeds all liquidity
+let max_fill: u64 = active_set.iter().map(|o| o.remaining()).sum();
+if target > max_fill {
+    // Fill everything, return worst price
+    return active_set.iter().map(|o| o.worst_price()).max();
+}
+```
+
+---
+
+## Further Reading
+
+<CardGroup cols={2}>
+  <Card title="Order Curves" icon="chart-line" href="/concepts/order-curves">
+    Mathematical foundation of power-law density functions
+  </Card>
+  <Card title="Security & MEV" icon="shield" href="/concepts/security">
+    How Braid protects against front-running and sandwich attacks
+  </Card>
+</CardGroup>

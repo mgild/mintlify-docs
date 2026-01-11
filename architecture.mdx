@@ -1,0 +1,178 @@
+---
+title: Architecture
+description: 'Deep dive into Braid protocol architecture'
+---
+
+# Architecture
+
+Braid is built on a sharded orderbook architecture that enables unlimited scalability while maintaining efficient on-chain matching.
+
+## System Overview
+
+```mermaid
+
+graph TB
+    subgraph Protocol["BRAID PROTOCOL"]
+        P[Protocol - singleton]
+        P --> P1[Global config, fees, admin]
+    end
+
+    subgraph Market["Market - per trading pair"]
+        M1[CpAmm]
+        M2["ClmmOrders[]"]
+        M3["LimitOrders[]"]
+        M4[PropAmmOrders]
+        M5[ExternalRoutes]
+    end
+
+    subgraph User["User - per wallet"]
+        U1[UserOrdersHeader - per user per market]
+    end
+
+    Protocol --> Market
+    Market --> User
+
+    style Protocol fill:#21252b,stroke:#61afef,color:#abb2bf
+    style Market fill:#21252b,stroke:#c678dd,color:#abb2bf
+    style User fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+## Sharding Strategy
+
+Orders are distributed across **shards** (separate Solana accounts) by price range:
+
+```mermaid
+
+graph LR
+    subgraph R2["$200 - $300"]
+        S2[Shard 2]
+        S2 --> T2[bid/ask trees]
+    end
+
+    subgraph R1["$100 - $200"]
+        S1[Shard 1]
+        S1 --> T1[bid/ask trees]
+    end
+
+    subgraph R0["$0 - $100"]
+        S0[Shard 0]
+        S0 --> T0[bid/ask trees]
+    end
+
+    R2 -.-> R1 -.-> R0
+
+    style R0 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style R1 fill:#21252b,stroke:#c678dd,color:#abb2bf
+    style R2 fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+### Why Sharding?
+
+| Challenge | Solution |
+|-----------|----------|
+| Solana's 10MB account limit | Split orderbook across multiple accounts |
+| Transaction account limits | Only load shards near current price |
+| CU constraints | Process orders in relevant shard only |
+
+### Shard Invariants
+
+- Markets always have **≥3 shards** (initialized on market creation)
+- Each shard has valid `nextBidsShard`/`nextAsksShard` chain pointers
+- Shards auto-split at **75% capacity**, merge at **25%**
+- 50% hysteresis "dead zone" prevents thrashing
+
+## Embedded Tree Architecture
+
+Tree nodes are embedded directly in order structs (no separate index accounts):
+
+```rust
+pub struct ClmmOrder {
+    pub base: BaseOrder,      // 56 bytes - core order data
+    pub inverse_idx: u32,     // Link to paired order
+    pub price_node: PriceNode, // 32 bytes - embedded tree node
+}
+```
+
+### Benefits
+
+<CardGroup cols={2}>
+  <Card title="No Cross-Account Coordination" icon="link-slash">
+    Tree operations are local to each shard
+  </Card>
+  <Card title="O(1) Best Price" icon="bolt">
+    Cached min/max indices for instant lookups
+  </Card>
+  <Card title="Reduced CU" icon="gauge-high">
+    Single account read/write per shard
+  </Card>
+  <Card title="Simpler Logic" icon="code">
+    Tree and order data always in sync
+  </Card>
+</CardGroup>
+
+## Matching Engine
+
+The matching engine uses a **greedy multi-source routing algorithm**:
+
+```mermaid
+
+flowchart TB
+    Start([amount_remaining > 0?]) --> |Yes| Step1
+    Step1[1. Get best order from PropAMM, CLMM, Limit] --> Step2
+    Step2[2. Select source with best price] --> Step3
+    Step3[3. Fill from that source] --> Step4
+    Step4[4. Update totals] --> Start
+    Start --> |No| Done([Complete])
+
+    style Start fill:#21252b,stroke:#e5c07b,color:#abb2bf
+    style Done fill:#21252b,stroke:#98c379,color:#abb2bf
+    style Step1 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style Step2 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style Step3 fill:#21252b,stroke:#61afef,color:#abb2bf
+    style Step4 fill:#21252b,stroke:#61afef,color:#abb2bf
+```
+
+### Source Priority
+
+Orders are selected purely by **best available price**:
+- For buys (taking asks): lowest price wins
+- For sells (taking bids): highest price wins
+
+No preference is given to any order type - pure price competition.
+
+## CLMM Paired Orders
+
+CLMM orders always exist as **bid+ask pairs**:
+
+```mermaid
+
+flowchart LR
+    subgraph Before
+        A1["ASK (primary)<br/>1000 A"] <--> B1["BID (inverse)<br/>0 B"]
+    end
+
+    Before -->|Taker buys 600 A| After
+
+    subgraph After
+        A2["ASK (primary)<br/>400 A"] <--> B2["BID (inverse)<br/>600 B"]
+    end
+
+    style A1 fill:#21252b,stroke:#e06c75,color:#abb2bf
+    style B1 fill:#21252b,stroke:#98c379,color:#abb2bf
+    style A2 fill:#21252b,stroke:#e06c75,color:#abb2bf
+    style B2 fill:#21252b,stroke:#98c379,color:#abb2bf
+```
+
+When filled, liquidity **flips** to the inverse - no allocation needed.
+
+## Crank Operations
+
+Shards require permissionless maintenance via **crank** instructions:
+
+| Instruction | Trigger | Action |
+|-------------|---------|--------|
+| `CrankSplit` | Shard >75% full, neighbors full | Create new shard, migrate orders |
+| `CrankMerge` | Shard &lt;25% full, neighbor sparse | Combine shards, reclaim account |
+| `CrankRebalance` | Shard &lt;25% full, neighbor has room | Move orders to neighbor |
+
+Crankers are incentivized via protocol rewards (TODO).
