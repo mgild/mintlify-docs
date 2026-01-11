@@ -13,6 +13,10 @@
             <input type="range" id="pg-exponent" min="-50" max="50" value="10" style="width: 100%;">
           </div>
           <div style="flex: 1; min-width: 150px;">
+            <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Curve Shift: <span id="pg-shift-val">0.00</span></label>
+            <input type="range" id="pg-curve-shift" min="-100" max="100" value="0" style="width: 100%;">
+          </div>
+          <div style="flex: 1; min-width: 150px;">
             <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Start Price: <span id="pg-start-val">0%</span></label>
             <input type="range" id="pg-start-price" min="0" max="100" value="0" style="width: 100%;">
           </div>
@@ -33,11 +37,13 @@
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const expSlider = document.getElementById('pg-exponent');
+    const shiftSlider = document.getElementById('pg-curve-shift');
     const startSlider = document.getElementById('pg-start-price');
     const endSlider = document.getElementById('pg-end-price');
 
     function drawChart() {
       const exp = parseInt(expSlider.value) / 10;
+      const shift = parseInt(shiftSlider.value) / 100;
       let startPct = parseInt(startSlider.value) / 100;
       let endPct = parseInt(endSlider.value) / 100;
 
@@ -48,6 +54,7 @@
       }
 
       document.getElementById('pg-exp-val').textContent = exp.toFixed(2);
+      document.getElementById('pg-shift-val').textContent = shift.toFixed(2);
       document.getElementById('pg-start-val').textContent = `${Math.round(startPct * 100)}%`;
       document.getElementById('pg-end-val').textContent = `${Math.round(endPct * 100)}%`;
 
@@ -77,11 +84,18 @@
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Calculate Y value based on position and exponent
+      // Calculate Y value based on position, exponent, and shift
       // normalizedX goes from 0 (near spot) to 1 (far from spot)
-      function calcY(normalizedX, e) {
+      // shift moves the curve's center point (-1 to 1)
+      function calcY(normalizedX, e, s) {
+        // Apply shift by transforming the x coordinate
+        // Shift moves the "center" of the curve
+        let shiftedX = normalizedX - s;
+        // Clamp to valid range
+        shiftedX = Math.max(0, Math.min(1, shiftedX));
+
         const power = Math.pow(2, Math.abs(e));
-        const curved = Math.pow(normalizedX, power);
+        const curved = Math.pow(shiftedX, power);
 
         // Blend towards flat (0.5) as exp approaches 0
         const blend = 1 - Math.exp(-Math.abs(e) * 3);
@@ -96,7 +110,7 @@
       }
 
       // Calculate average price (weighted average based on curve)
-      function calcAverageX(e) {
+      function calcAverageX(e, s) {
         // Numerical integration for weighted average
         const steps = 100;
         let totalWeight = 0;
@@ -104,7 +118,7 @@
 
         for (let i = 0; i <= steps; i++) {
           const t = i / steps;
-          const y = calcY(t, e);
+          const y = calcY(t, e, s);
           totalWeight += y;
           weightedSum += t * y;
         }
@@ -131,25 +145,46 @@
         ctx.lineTo(curveStart, 400);
         ctx.stroke();
       } else {
-        // Fill curve
-        ctx.beginPath();
-        ctx.moveTo(curveStart, 400);
+        // Find first x where density > 0 (threshold to avoid floating point issues)
+        const threshold = 0.001;
+        let firstPositiveX = curveStart;
         for (let x = curveStart; x <= curveEnd; x++) {
           const normalizedX = (x - curveStart) / rangeWidth;
-          const y = calcY(normalizedX, exp);
-          ctx.lineTo(x, 400 - y * 370);
+          const y = calcY(normalizedX, exp, shift);
+          if (y > threshold) {
+            firstPositiveX = x;
+            break;
+          }
+        }
+
+        // Fill curve - only where density > 0
+        ctx.beginPath();
+        ctx.moveTo(firstPositiveX, 400);
+        for (let x = firstPositiveX; x <= curveEnd; x++) {
+          const normalizedX = (x - curveStart) / rangeWidth;
+          const y = calcY(normalizedX, exp, shift);
+          if (y > threshold) {
+            ctx.lineTo(x, 400 - y * 370);
+          }
         }
         ctx.lineTo(curveEnd, 400);
         ctx.closePath();
         ctx.fill();
 
-        // Stroke curve
+        // Stroke curve - only where density > 0
         ctx.beginPath();
-        for (let x = curveStart; x <= curveEnd; x++) {
+        let started = false;
+        for (let x = firstPositiveX; x <= curveEnd; x++) {
           const normalizedX = (x - curveStart) / rangeWidth;
-          const y = calcY(normalizedX, exp);
-          if (x === curveStart) ctx.moveTo(x, 400 - y * 370);
-          else ctx.lineTo(x, 400 - y * 370);
+          const y = calcY(normalizedX, exp, shift);
+          if (y > threshold) {
+            if (!started) {
+              ctx.moveTo(x, 400 - y * 370);
+              started = true;
+            } else {
+              ctx.lineTo(x, 400 - y * 370);
+            }
+          }
         }
         ctx.stroke();
       }
@@ -160,7 +195,7 @@
         ctx.lineWidth = 2;
         ctx.setLineDash([4, 4]);
 
-        const avgNorm = calcAverageX(exp);
+        const avgNorm = calcAverageX(exp, shift);
         const avgX = curveStart + avgNorm * rangeWidth;
         ctx.beginPath();
         ctx.moveTo(avgX, 20);
@@ -177,6 +212,7 @@
     }
 
     expSlider.addEventListener('input', drawChart);
+    shiftSlider.addEventListener('input', drawChart);
     startSlider.addEventListener('input', drawChart);
     endSlider.addEventListener('input', drawChart);
     drawChart();

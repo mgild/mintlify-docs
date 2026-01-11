@@ -14,7 +14,7 @@ Braid introduces **density orders** - limit orders that act across a price range
 
 ## Documentation Site
 
-This repository contains the Mintlify-powered documentation site. The live documentation is available at [docs.braidprotocol.com](https://docs.braidprotocol.com).
+This repository contains the Mintlify-powered documentation site. The live documentation is available at [docs.braidprotocol.com](https://braid-aa5ede46.mintlify.app/introduction).
 
 ### Running Locally
 
