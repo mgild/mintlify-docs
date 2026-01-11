@@ -14,6 +14,9 @@
     "light": "/logo/light.svg"
   },
   "favicon": "/favicon.svg",
+  "metadata": {
+    "og:image": "/logo/main.svg"
+  },
   "navigation": {
     "languages": [
       {
