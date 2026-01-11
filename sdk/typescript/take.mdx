@@ -20,9 +20,7 @@ const ix = await market.swap({
   side: Side.Ask,           // 1 = buy base token
   amount: 1_000_000n,       // Input amount (quote tokens)
   minOut: 950_000n,         // Minimum output (slippage protection)
-  taker: wallet,            // Transaction signer
-  takerInput: userQuoteAta, // Your input token account
-  takerOutput: userBaseAta, // Your output token account
+  taker: wallet,            // Transaction signer (ATAs derived automatically)
 });
 
 // Add ix to a transaction and send
@@ -35,9 +33,7 @@ const ix = await market.swap({
 | `side` | `number` | `0` (bid/sell base) or `1` (ask/buy base) |
 | `amount` | `bigint` | Input amount to swap |
 | `minOut` | `bigint` | Minimum output (reverts if not met) |
-| `taker` | `TransactionSigner` | Taker wallet (signer) |
-| `takerInput` | `Address` | Taker's input token account |
-| `takerOutput` | `Address` | Taker's output token account |
+| `taker` | `TransactionSigner` | Taker wallet (ATAs derived automatically) |
 | `minOrderBips` | `number` | Skip orders below this % (optional, default 0) |
 | `maxOrders` | `number` | Max orders to fill (optional, default 100) |
 
@@ -58,8 +54,6 @@ const ix = await market.swap({
   amount: 1_000_000n,
   minOut,
   taker: wallet,
-  takerInput: userQuoteAta,
-  takerOutput: userBaseAta,
 });
 ```
 
