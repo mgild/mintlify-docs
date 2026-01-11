@@ -11,7 +11,7 @@ Limit orders in Braid use concentrated liquidity curves with a price range.
 
 Limit orders specify:
 - Price range (pMin to pMax)
-- Single-sided (bid OR ask)
+- Explicit side (bid or ask)
 - Amount of liquidity to provide
 - FIFO execution within price level
 
@@ -35,13 +35,23 @@ struct LimitOrder {
 <Tabs>
   <Tab title="TypeScript">
     ```typescript
-    const tx = await market.placeLimitOrder({
-      side: Side.Bid,
-      pMin: 95_000_000n,     // Lower price bound
-      pMax: 100_000_000n,    // Upper price bound
-      exponent: 0,           // 0=uniform, 1=linear, 2+=concentrated
-      amount: 1_000_000n,
-      owner: wallet.publicKey,
+    // Place a bid (buy order)
+    const ix = await market.placeLimitOrder({
+      side: 'bid',
+      pMin: 95_000_000n,        // Lower price bound
+      pMax: 100_000_000n,       // Upper price bound
+      amount: 1_000_000_000n,   // USDC to spend
+      // exponent defaults to 0 (uniform distribution)
+      owner: wallet,
+    });
+
+    // Place an ask (sell order)
+    const ix = await market.placeLimitOrder({
+      side: 'ask',
+      pMin: 100_000_000n,
+      pMax: 105_000_000n,
+      amount: 10_000_000n,      // SOL to sell
+      owner: wallet,
     });
     ```
   </Tab>
@@ -64,9 +74,8 @@ struct LimitOrder {
 
 ```typescript
 const tx = await market.cancelLimitOrder({
-  orderIdx: 42,
-  side: Side.Bid,
-  owner: wallet.publicKey,
+  orderId: 42,
+  owner: wallet,
 });
 ```
 
@@ -78,26 +87,45 @@ The price range determines where your order is active:
 - **Wide range** (pMin far from pMax): More flexibility, may fill across a range of prices
 
 ```typescript
-// Tight range: Buy around $100 with uniform distribution
-const tx = await market.placeLimitOrder({
-  side: Side.Bid,
+// Tight range: Buy around $100 (exponent defaults to 0 = uniform)
+const ix = await market.placeLimitOrder({
+  side: 'bid',
   pMin: 99_000_000n,
   pMax: 101_000_000n,
-  exponent: 0,            // Uniform across range
-  amount: 10_000_000n,
-  owner: wallet.publicKey,
+  amount: 1_000_000_000n,
+  owner: wallet,
 });
 
-// Wide range: Buy more aggressively at lower prices
-const tx = await market.placeLimitOrder({
-  side: Side.Bid,
+// Wide range with linear density curve
+const ixWide = await market.placeLimitOrder({
+  side: 'bid',
   pMin: 95_000_000n,
   pMax: 105_000_000n,
+  amount: 1_000_000_000n,
   exponent: 1,            // Linear increase toward edge
-  amount: 10_000_000n,
-  owner: wallet.publicKey,
+  owner: wallet,
 });
 ```
+
+## Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `side` | `'bid' \| 'ask'` | Order side: 'bid' (buy base) or 'ask' (sell base) |
+| `pMin` | `bigint` | Lower price bound |
+| `pMax` | `bigint` | Upper price bound |
+| `amount` | `bigint` | Order amount (quote tokens for bids, base tokens for asks) |
+| `mode` | `'standard' \| 'postOnly' \| 'ioc'` | Execution mode. Defaults to 'standard' |
+| `exponent` | `number?` | Density curve (0=uniform, 1=linear, 2+=concentrated). Defaults to 0 |
+| `owner` | `TransactionSigner` | Order owner (signer) |
+
+### Execution Modes
+
+| Mode | Behavior |
+|------|----------|
+| `standard` | Cross if possible, rest remainder on book (default) |
+| `postOnly` | Reject if order would cross the spread (maker-only) |
+| `ioc` | Fill immediately, cancel any unfilled remainder |
 
 ## Fees
 

@@ -8,48 +8,66 @@ description: 'Place and cancel orders'
 ## Place a Limit Order
 
 ```typescript
-import { Side } from '@braid/client';
-
-const tx = await market.placeLimitOrder({
-  side: Side.Bid,
-  pMin: 95_000_000n,      // Lower price bound
-  pMax: 100_000_000n,     // Upper price bound
-  exponent: 0,            // 0=uniform, 1=linear, 2+=concentrated
-  amount: 1_000_000n,     // Amount in base units
-  owner: wallet.publicKey,
+// Place a bid (buy order)
+const ix = await market.placeLimitOrder({
+  side: 'bid',
+  pMin: 95_000_000n,        // Lower price bound
+  pMax: 100_000_000n,       // Upper price bound
+  amount: 1_000_000_000n,   // USDC to spend
+  // mode defaults to 'standard'
+  owner: wallet,
 });
 
-const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
+// Place an ask (sell order) with post-only mode
+const ix = await market.placeLimitOrder({
+  side: 'ask',
+  pMin: 100_000_000n,       // Lower price bound
+  pMax: 105_000_000n,       // Upper price bound
+  amount: 10_000_000n,      // SOL to sell
+  mode: 'postOnly',         // Reject if would cross
+  owner: wallet,
+});
 ```
 
 ## Place a CLMM Position
 
 ```typescript
-import { Side } from '@braid/client';
-
-const tx = await market.placeClmmPosition({
-  side: Side.Ask,
-  pMin: 95_000_000n,      // Lower price bound
-  pMax: 105_000_000n,     // Upper price bound
-  exponent: 0,            // 0=uniform, 1=linear, 2+=concentrated
-  amount: 10_000_000n,    // Liquidity amount
-  owner: wallet.publicKey,
+const ixs = await market.placeClmmPosition({
+  pMin: 95_000_000n,        // Lower price bound
+  pMax: 105_000_000n,       // Upper price bound
+  maxBase: 10_000_000n,     // Max base token to deposit
+  maxQuote: 1_000_000_000n, // Max quote token to deposit
+  // exponent defaults to 0 (uniform)
+  owner: wallet,
 });
-
-const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
+// ixs is an array of instructions - build into transaction to send
 ```
 
 <Note>
-CLMM positions create paired bid+ask orders. When filled on one side, liquidity flips to the other.
+The protocol determines which tokens to deposit based on where your range sits relative to current price. When filled, liquidity automatically flips to the other side.
 </Note>
+
+## Place a PropAMM Order
+
+```typescript
+const ixs = await market.placePropOrder({
+  pMin: 148_000_000n,
+  pMax: 152_000_000n,
+  maxBase: 5_000_000_000n,
+  maxQuote: 750_000_000_000n,
+  bidExponent: 0,
+  askExponent: 0,
+  sequenceNumber: 1,
+  owner: wallet,
+});
+```
 
 ## Cancel a Limit Order
 
 ```typescript
 const tx = await market.cancelLimitOrder({
-  orderIdx: 42,           // Order index in shard
-  side: Side.Bid,
-  owner: wallet.publicKey,
+  orderId: 42,
+  owner: wallet,
 });
 
 const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
@@ -58,14 +76,13 @@ const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
 ## Cancel a CLMM Position
 
 ```typescript
-const tx = await market.cancelClmmPosition({
-  orderIdx: 42,
-  side: Side.Ask,
-  owner: wallet.publicKey,
+const ixs = await market.cancelClmmPosition({
+  orderId: 42,
+  owner: wallet,
 });
 
-// Both the primary and inverse orders are cancelled
-const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
+// Both bid and ask sides are cancelled together
+// ixs contains instructions for cancelling both sides
 ```
 
 ## Get User Orders
@@ -80,24 +97,43 @@ for (const order of userOrders) {
 
 ## Order Parameters
 
-### Limit Order
+### LimitOrderParams
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `side` | `Side` | `Bid` or `Ask` |
+| `side` | `'bid' \| 'ask'` | Order side: 'bid' (buy base) or 'ask' (sell base) |
 | `pMin` | `bigint` | Lower price bound |
 | `pMax` | `bigint` | Upper price bound |
-| `exponent` | `number` | Density curve exponent (0=uniform, 1=linear, 2+=concentrated) |
-| `amount` | `bigint` | Order size in base units |
-| `owner` | `PublicKey` | Order owner (signer) |
+| `amount` | `bigint` | Order amount (quote tokens for bids, base tokens for asks) |
+| `mode` | `'standard' \| 'postOnly' \| 'ioc'` | Execution mode. Defaults to 'standard' |
+| `exponent` | `number?` | Density curve (0=uniform, 1=linear, 2+=concentrated). Defaults to 0 |
+| `owner` | `TransactionSigner` | Order owner (signer) |
 
-### CLMM Position
+**Execution modes:**
+- `standard`: Cross if possible, rest remainder on book (default)
+- `postOnly`: Reject if order would cross the spread (maker-only)
+- `ioc`: Fill immediately, cancel any unfilled remainder
+
+### ClmmPositionParams
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `side` | `Side` | Primary side (`Bid` or `Ask`) |
 | `pMin` | `bigint` | Lower price bound |
 | `pMax` | `bigint` | Upper price bound |
-| `exponent` | `number` | Density curve exponent (0=uniform, 1=linear, 2+=concentrated) |
-| `amount` | `bigint` | Liquidity amount |
-| `owner` | `PublicKey` | Position owner (signer) |
+| `maxBase` | `bigint` | Maximum base token (token A) to deposit |
+| `maxQuote` | `bigint` | Maximum quote token (token B) to deposit |
+| `exponent` | `number?` | Density curve (0=uniform, 1=linear, 2+=concentrated). Defaults to 0 |
+| `owner` | `TransactionSigner` | Position owner (signer) |
+
+### PropOrderParams
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pMin` | `bigint` | Lower price bound |
+| `pMax` | `bigint` | Upper price bound |
+| `maxBase` | `bigint` | Maximum base token (token A) to deposit |
+| `maxQuote` | `bigint` | Maximum quote token (token B) to deposit |
+| `bidExponent` | `number?` | Bid side density curve. Defaults to 0 |
+| `askExponent` | `number?` | Ask side density curve. Defaults to 0 |
+| `sequenceNumber` | `number` | Deduplication sequence number |
+| `owner` | `TransactionSigner` | Position owner (signer) |

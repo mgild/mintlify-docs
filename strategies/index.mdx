@@ -18,22 +18,21 @@ This guide walks through common trading strategies and how to implement them eff
 You believe SOL will drop to $140 and want to accumulate:
 
 ```typescript
-import { Side, Market } from '@braid/client';
+import { Market } from '@braid/client';
 
 const BUY_PRICE = 140_000_000n;   // $140 per SOL
 const BUY_AMOUNT = 100_000_000_000n; // 100 SOL
 
 async function buyTheDip() {
-  const tx = await market.placeLimitOrder({
-    side: Side.Bid,               // Buying SOL
-    pMin: BUY_PRICE - 5_000_000n, // $135 lower bound
-    pMax: BUY_PRICE,              // $140 upper bound
-    exponent: 0,                  // 0=uniform, 1=linear, 2+=concentrated
-    amount: BUY_AMOUNT,
-    owner: wallet.publicKey,
+  const ix = await market.placeLimitOrder({
+    side: 'bid',
+    pMin: BUY_PRICE - 5_000_000n,  // $135 lower bound
+    pMax: BUY_PRICE,               // $140 upper bound
+    amount: BUY_AMOUNT * 140n,     // USDC to spend
+    owner: wallet,
   });
 
-  await sendAndConfirmTransaction(connection, tx, [wallet]);
+  // Build transaction from instructions and send
   console.log(`Bid placed: 100 SOL @ $135-$140`);
 }
 ```
@@ -53,16 +52,15 @@ const SELL_PRICE = 160_000_000n;  // $160 per SOL
 const SELL_AMOUNT = 50_000_000_000n; // 50 SOL
 
 async function takeProfit() {
-  const tx = await market.placeLimitOrder({
-    side: Side.Ask,               // Selling SOL
-    pMin: SELL_PRICE,             // $160 lower bound
+  const ix = await market.placeLimitOrder({
+    side: 'ask',
+    pMin: SELL_PRICE,              // $160 lower bound
     pMax: SELL_PRICE + 10_000_000n, // $170 upper bound
-    exponent: 0,                  // 0=uniform, 1=linear, 2+=concentrated
-    amount: SELL_AMOUNT,
-    owner: wallet.publicKey,
+    amount: SELL_AMOUNT,           // SOL to sell
+    owner: wallet,
   });
 
-  await sendAndConfirmTransaction(connection, tx, [wallet]);
+  // Build transaction from instructions and send
   console.log(`Ask placed: 50 SOL @ $160-$170`);
 }
 ```
@@ -93,31 +91,25 @@ $135 ─────────── Buy 34% ───────────
 
 ```typescript
 interface GridLevel {
+  side: 'bid' | 'ask';
   pMin: bigint;
   pMax: bigint;
-  exponent: number;
   amount: bigint;
-  side: Side;
+  exponent?: number;  // Optional, defaults to 0
 }
 
 async function deployGrid(levels: GridLevel[]) {
-  const transactions: Transaction[] = [];
-
   for (const level of levels) {
-    const tx = await market.placeLimitOrder({
+    const ix = await market.placeLimitOrder({
       side: level.side,
       pMin: level.pMin,
       pMax: level.pMax,
-      exponent: level.exponent,
       amount: level.amount,
-      owner: wallet.publicKey,
+      ...(level.exponent && { exponent: level.exponent }),
+      owner: wallet,
     });
-    transactions.push(tx);
-  }
 
-  // Batch submit for efficiency
-  for (const tx of transactions) {
-    await sendAndConfirmTransaction(connection, tx, [wallet]);
+    // Build and send transaction from ix
   }
 
   console.log(`Grid deployed: ${levels.length} orders`);
@@ -125,14 +117,14 @@ async function deployGrid(levels: GridLevel[]) {
 
 // Example: Deploy a grid around $150
 const grid: GridLevel[] = [
-  // Sells (asks)
-  { pMin: 165_000_000n, pMax: 170_000_000n, exponent: 0, amount: 20_000_000_000n, side: Side.Ask },
-  { pMin: 160_000_000n, pMax: 165_000_000n, exponent: 0, amount: 20_000_000_000n, side: Side.Ask },
-  { pMin: 155_000_000n, pMax: 160_000_000n, exponent: 0, amount: 20_000_000_000n, side: Side.Ask },
-  // Buys (bids)
-  { pMin: 145_000_000n, pMax: 150_000_000n, exponent: 0, amount: 33_000_000_000n, side: Side.Bid },
-  { pMin: 140_000_000n, pMax: 145_000_000n, exponent: 0, amount: 33_000_000_000n, side: Side.Bid },
-  { pMin: 135_000_000n, pMax: 140_000_000n, exponent: 0, amount: 34_000_000_000n, side: Side.Bid },
+  // Sells above current price (asks) - amount in SOL
+  { side: 'ask', pMin: 165_000_000n, pMax: 170_000_000n, amount: 20_000_000_000n },
+  { side: 'ask', pMin: 160_000_000n, pMax: 165_000_000n, amount: 20_000_000_000n },
+  { side: 'ask', pMin: 155_000_000n, pMax: 160_000_000n, amount: 20_000_000_000n },
+  // Buys below current price (bids) - amount in USDC
+  { side: 'bid', pMin: 145_000_000n, pMax: 150_000_000n, amount: 4_950_000_000_000n },
+  { side: 'bid', pMin: 140_000_000n, pMax: 145_000_000n, amount: 4_785_000_000_000n },
+  { side: 'bid', pMin: 135_000_000n, pMax: 140_000_000n, amount: 4_760_000_000_000n },
 ];
 
 await deployGrid(grid);
@@ -174,20 +166,18 @@ Traditional Grid:           CLMM Position:
 ### Basic CLMM Position
 
 ```typescript
-import { Side } from '@braid/client';
-
 async function provideConcentratedLiquidity() {
   // Provide $10,000 worth of liquidity between $145-$155
-  const tx = await market.placeClmmPosition({
-    side: Side.Ask,               // Start with SOL to sell
-    pMin: 145_000_000n,           // Lower bound: $145
-    pMax: 155_000_000n,           // Upper bound: $155
-    exponent: 0,                  // 0=uniform, 1=linear, 2+=concentrated
-    amount: 66_000_000_000n,      // ~66 SOL (~$10,000 at $150)
-    owner: wallet.publicKey,
+  const ixs = await market.placeClmmPosition({
+    pMin: 145_000_000n,             // Lower bound: $145
+    pMax: 155_000_000n,             // Upper bound: $155
+    maxBase: 66_000_000_000n,       // Max ~66 SOL
+    maxQuote: 10_000_000_000_000n,  // Max ~$10,000 USDC
+    // exponent defaults to 0 (uniform)
+    owner: wallet,
   });
 
-  await sendAndConfirmTransaction(connection, tx, [wallet]);
+  // Build transaction from instructions and send
   console.log(`CLMM position opened: $145-$155 range`);
 }
 ```
@@ -206,7 +196,7 @@ After someone buys 30 SOL:
   BID: ~$4,500 worth @ $145-$152 (flipped!)
 
 If price drops, you buy back. If it rises, you sell more.
-This is automatic market making.
+This is automated market making.
 ```
 
 ### Range Selection Guide
@@ -259,25 +249,22 @@ Only use CLMM if you understand and accept this risk.
 ### Basic PropAMM Trade
 
 ```typescript
-import { Side, getCurrentSlot } from '@braid/client';
-
 async function tightSpreadSwap(inputAmount: bigint, minOutput: bigint) {
-  const currentSlot = await getCurrentSlot(connection);
-
   // Step 1: Place PropAMM order (zero fees, tight spread)
-  const placeTx = await market.placePropOrder({
-    side: Side.Bid,
-    slot: currentSlot,
-    pMin: 149_500_000n,           // Tight range around mid
-    pMax: 150_500_000n,           // ~0.67% spread
-    exponent: 0,                  // 0=uniform, 1=linear, 2+=concentrated
-    amount: inputAmount,
-    owner: wallet.publicKey,
+  const placeIxs = await market.placePropOrder({
+    pMin: 149_500_000n,             // Tight range around mid
+    pMax: 150_500_000n,             // ~0.67% spread
+    maxBase: inputAmount,
+    maxQuote: inputAmount * 150n,   // Approximate USDC equivalent
+    bidExponent: 0,
+    askExponent: 0,
+    sequenceNumber: 1,
+    owner: wallet,
   });
 
   // Step 2: Take against your own order (atomic bundle)
-  const takeTx = await Market.swapIx({
-    side: Side.Ask,
+  const takeTx = await market.swap({
+    side: 'ask',
     amount: inputAmount,
     minOut: minOutput,
   });
@@ -339,7 +326,7 @@ async function dcaWithLimits(
     levels.push({
       price,
       amount: amountPerLevel,
-      side: Side.Bid,
+      side: 'bid',
     });
   }
 
@@ -374,7 +361,7 @@ async function exponentialAccumulation(
     const multiplier = Math.pow(exponent, i);
     const amount = BigInt(Math.floor(Number(baseBudget) * multiplier));
 
-    levels.push({ price, amount, side: Side.Bid });
+    levels.push({ price, amount, side: 'bid' });
   }
 
   await deployGrid(levels);
@@ -414,7 +401,7 @@ async function layeredDistribution(
     levels.push({
       price,
       amount: amountPerLevel,
-      side: Side.Ask,
+      side: 'ask',
     });
   }
 
@@ -449,32 +436,29 @@ The most effective approach often combines multiple strategies:
 async function combinedStrategy() {
   // 1. Core position: CLMM for fee income
   await market.placeClmmPosition({
-    side: Side.Ask,
     pMin: 140_000_000n,
     pMax: 160_000_000n,
-    exponent: 0,
-    amount: 50_000_000_000n, // 50% of capital
-    owner: wallet.publicKey,
+    maxBase: 50_000_000_000n,      // 50% of capital (SOL)
+    maxQuote: 7_500_000_000_000n,  // 50% of capital (USDC)
+    owner: wallet,
   });
 
   // 2. Accumulation layer: limit bids below range
   await market.placeLimitOrder({
-    side: Side.Bid,
+    side: 'bid',
     pMin: 130_000_000n,
     pMax: 135_000_000n,
-    exponent: 0,
-    amount: 25_000_000_000n, // 25% of capital
-    owner: wallet.publicKey,
+    amount: 3_375_000_000_000n,   // 25% of capital in USDC
+    owner: wallet,
   });
 
   // 3. Distribution layer: limit asks above range
   await market.placeLimitOrder({
-    side: Side.Ask,
+    side: 'ask',
     pMin: 165_000_000n,
     pMax: 170_000_000n,
-    exponent: 0,
-    amount: 25_000_000_000n, // 25% of capital
-    owner: wallet.publicKey,
+    amount: 25_000_000_000n,      // 25% of capital in SOL
+    owner: wallet,
   });
 
   console.log('Combined strategy deployed');

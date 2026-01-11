@@ -75,11 +75,11 @@ Let's trace through a real swap: **Buy SOL with 100 USDC**
 ### Step 1: Submit the Swap
 
 ```typescript
-const ix = Market.swapIx({
-  side: Side.Ask,              // Buying from asks
+const ix = await market.swap({
+  side: 'ask',                 // Buying from asks
   amount: 100_000_000n,        // 100 USDC
   minOut: 650_000_000n,        // At least 0.65 SOL (slippage protection)
-  // ... other required accounts
+  taker: wallet.publicKey,
 });
 ```
 
@@ -135,11 +135,12 @@ When you call `take()`, you provide these parameters:
 
 ```typescript
 interface TakeParams {
-  amount: bigint;         // How much you're spending
-  minOut: bigint;         // Minimum you'll accept (slippage protection)
-  side: Side;             // Ask = buying base, Bid = selling base
-  minOrderBips?: number;  // Optional: Skip tiny orders (saves compute)
-  maxOrders?: number;     // Optional: Max orders to fill (saves compute)
+  amount: bigint;            // How much you're spending
+  minOut: bigint;            // Minimum you'll accept (slippage protection)
+  side: 'ask' | 'bid';       // 'ask' = buying base, 'bid' = selling base
+  taker: PublicKey;          // Taker wallet
+  minOrderBips?: number;     // Optional: Skip tiny orders (saves compute)
+  maxOrders?: number;        // Optional: Max orders to fill (saves compute)
 }
 ```
 
@@ -259,7 +260,7 @@ Each order type fills slightly differently:
       Inverse BID: Buy ~$900 worth @ $150-155 (flipped!)
 
     The filled portion becomes liquidity on the other side.
-    This is automatic market making!
+    This is automated market making!
     ```
   </Tab>
   <Tab title="PropAMM Orders">
@@ -320,11 +321,9 @@ With minOrderBips = 100 (1%):
 Before executing a swap, you can get a quote to see expected output:
 
 ```typescript
-import { Side } from '@braid/client';
-
 // Get quote for buying SOL with 100 USDC
 const quote = await market.getQuote({
-  side: Side.Ask,
+  side: 'ask',
   amount: 100_000_000n,  // 100 USDC
 });
 

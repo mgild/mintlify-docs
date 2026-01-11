@@ -43,12 +43,15 @@ This is the same reason traditional market makers quote tighter for immediate-or
 PropAMM orders place liquidity on both sides of the orderbook:
 
 ```typescript
-const tx = await market.placePropOrder({
-  pMin: 148_000_000n,      // Lower price bound
-  pMax: 152_000_000n,      // Upper price bound
-  exponent: 0,             // 0=uniform, 1=linear, 2+=concentrated
-  amount: 10_000_000_000n, // Liquidity amount
-  owner: wallet.publicKey,
+const ixs = await market.placePropOrder({
+  pMin: 148_000_000n,           // Lower price bound
+  pMax: 152_000_000n,           // Upper price bound
+  maxBase: 5_000_000_000n,      // Max SOL to deposit
+  maxQuote: 750_000_000_000n,   // Max USDC to deposit
+  bidExponent: 0,               // Bid density (0=uniform, 1=linear, 2+=concentrated)
+  askExponent: 0,               // Ask density
+  sequenceNumber: 1,            // Unique per slot (for deduplication)
+  owner: wallet,
 });
 ```
 
@@ -60,9 +63,12 @@ This creates both a bid and ask within the price range, valid for the current sl
 |-----------|------|-------------|
 | `pMin` | `bigint` | Lower price bound |
 | `pMax` | `bigint` | Upper price bound |
-| `exponent` | `number` | Density curve exponent (0=uniform, 1=linear, 2+=concentrated) |
-| `amount` | `bigint` | Total liquidity amount |
-| `owner` | `PublicKey` | Position owner (signer) |
+| `maxBase` | `bigint` | Max base token (SOL) to deposit |
+| `maxQuote` | `bigint` | Max quote token (USDC) to deposit |
+| `bidExponent` | `number` | Bid density curve (0=uniform, 1=linear, 2+=concentrated) |
+| `askExponent` | `number` | Ask density curve (0=uniform, 1=linear, 2+=concentrated) |
+| `sequenceNumber` | `number` | Unique identifier per slot (for deduplication) |
+| `owner` | `TransactionSigner` | Position owner (signer) |
 
 ## Use Cases
 

@@ -166,23 +166,23 @@ PropAMM orders are designed for competitive spreads through zero fees and slot-s
 ```
 Timeline of a PropAMM order:
 
-Slot N-1     Slot N              Slot N+1
-   │           │                    │
-   │           ├─ Order placed      │
-   │           │                    │
-   │           ├─ Valid: ~400ms     ├─ Order EXPIRED
-   │           │  (zero fees,       │  (unfillable)
-   │           │   tight spreads)   │
-   │           │                    │
-   ▼           ▼                    ▼
+  Slot N-1        Slot N           Slot N+1
+     │              │                 │
+     │              ├── Order placed  │
+     │              │                 │
+     │              │   Valid ~400ms  │
+     │              │   (zero fees,   ├── Order EXPIRED
+     │              │   tight spread) │   (unfillable)
+     │              │                 │
+     ▼              ▼                 ▼
 
 Why this helps MEV resistance:
-1. Bot sees your tx in mempool
-2. Analyzes profitability
-3. Constructs attack tx
-4. Too slow - order already expired
+  1. Bot sees your tx in mempool
+  2. Analyzes profitability
+  3. Constructs attack tx
+  4. Too slow - order already expired
 
-All in &lt;400ms? Nearly impossible.
+All in <400ms? Nearly impossible.
 ```
 
 ### Zero Fees for PropAMM
@@ -223,10 +223,11 @@ Every swap can specify limits that bound potential losses:
 
 ```typescript
 // Will revert if output less than 0.64 SOL
-await Market.swapIx({
-  side: Side.Ask,
+await market.swap({
+  side: 'ask',
   amount: 100_000_000n,
   minOut: 640_000_000n,    // At least 0.64 SOL or revert
+  taker: wallet.publicKey,
 });
 ```
 

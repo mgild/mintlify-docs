@@ -32,39 +32,25 @@ Price drops back to $150:
   - You now have ~5 SOL + ~$725 USDC again
 ```
 
-This is **automatic market making** - you're continuously buying low and selling high within your range.
+This is **automated market making** - you're continuously buying low and selling high within your range.
 
 ## Place a Position
 
 ```typescript
-// Place an ask position (selling SOL)
 const ixs = await market.placeClmmPosition({
-  ask: {
-    pMin: 145_000_000n,       // Lower price bound: $145
-    pMax: 155_000_000n,       // Upper price bound: $155
-    amount: 10_000_000_000n,  // 10 SOL (9 decimals)
-    exponent: 0,              // 0=uniform, 1=linear, 2+=concentrated
-  },
-  owner: wallet,
-});
-
-// Or place both bid and ask together
-const ixs = await market.placeClmmPosition({
-  bid: {
-    pMin: 140_000_000n,       // Bid range: $140-$145
-    pMax: 145_000_000n,
-    amount: 5_000_000_000n,
-    exponent: 0,
-  },
-  ask: {
-    pMin: 145_000_000n,       // Ask range: $145-$150
-    pMax: 150_000_000n,
-    amount: 5_000_000_000n,
-    exponent: 0,
-  },
+  pMin: 145_000_000n,           // Lower price bound: $145
+  pMax: 155_000_000n,           // Upper price bound: $155
+  maxBase: 10_000_000_000n,     // Max SOL to deposit
+  maxQuote: 1_500_000_000_000n, // Max USDC to deposit
+  // exponent defaults to 0 (uniform)
   owner: wallet,
 });
 ```
+
+The protocol determines which tokens to take based on where your range sits relative to current price:
+- **Range above current price**: Deposits base token (SOL), ready to sell
+- **Range below current price**: Deposits quote token (USDC), ready to buy
+- **Range spans current price**: Deposits both tokens proportionally
 
 ## How the Flip Works
 
@@ -107,12 +93,11 @@ Fees accumulate in your position and are returned when you cancel.
 Cancelling withdraws both your remaining tokens AND any flipped proceeds:
 
 ```typescript
-const tx = await market.cancelClmmPosition({
-  orderIdx: 42,
-  side: Side.Ask,
+const ixs = await market.cancelClmmPosition({
+  orderId: 42,
   owner: wallet.publicKey,
 });
-// Returns: remaining SOL + any USDC from fills
+// Cancels both bid and ask sides, returns remaining tokens + fees
 ```
 
 ## Choosing Your Range
@@ -126,23 +111,19 @@ const tx = await market.cancelClmmPosition({
 ```typescript
 // Narrow range - aggressive fee farming
 const ixs = await market.placeClmmPosition({
-  ask: {
-    pMin: 148_000_000n,  // $148
-    pMax: 152_000_000n,  // $152 (±~1.3%)
-    amount: 10_000_000_000n,
-    exponent: 0,
-  },
+  pMin: 148_000_000n,           // $148
+  pMax: 152_000_000n,           // $152 (±~1.3%)
+  maxBase: 10_000_000_000n,
+  maxQuote: 1_500_000_000_000n,
   owner: wallet,
 });
 
 // Wide range - passive income
 const ixs = await market.placeClmmPosition({
-  ask: {
-    pMin: 120_000_000n,  // $120
-    pMax: 180_000_000n,  // $180 (±~20%)
-    amount: 10_000_000_000n,
-    exponent: 0,
-  },
+  pMin: 120_000_000n,           // $120
+  pMax: 180_000_000n,           // $180 (±~20%)
+  maxBase: 10_000_000_000n,
+  maxQuote: 1_500_000_000_000n,
   owner: wallet,
 });
 ```
@@ -174,18 +155,12 @@ The loss is "impermanent" because it reverses if price returns to your entry poi
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `bid` | `OrderSideParams?` | Bid (buy) side - optional |
-| `ask` | `OrderSideParams?` | Ask (sell) side - optional |
-| `owner` | `TransactionSigner` | Position owner (signer) |
-
-Each side (`bid` or `ask`) contains:
-
-| Field | Type | Description |
-|-------|------|-------------|
 | `pMin` | `bigint` | Lower price bound |
 | `pMax` | `bigint` | Upper price bound |
-| `amount` | `bigint` | Amount of tokens to deposit |
-| `exponent` | `number` | Density curve (0=uniform, 1=linear, 2+=concentrated) |
+| `maxBase` | `bigint` | Maximum base token (token A) to deposit |
+| `maxQuote` | `bigint` | Maximum quote token (token B) to deposit |
+| `exponent` | `number?` | Density curve (0=uniform, 1=linear, 2+=concentrated). Defaults to 0 |
+| `owner` | `TransactionSigner` | Position owner (signer) |
 
 ## When to Use CLMM
 

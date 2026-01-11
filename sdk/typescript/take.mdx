@@ -12,11 +12,9 @@ The `take` instruction executes a market order by filling against the best avail
 ## Basic Swap
 
 ```typescript
-import { Side } from '@braid/client';
-
 // Buy base token (take from asks)
-const tx = await Market.swapIx({
-  side: Side.Ask,
+const tx = await market.swap({
+  side: 'ask',
   amount: 1_000_000n,       // Input amount (quote tokens)
   minOut: 950_000n,         // Minimum output (slippage protection)
   taker: wallet.publicKey,
@@ -29,7 +27,7 @@ const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `side` | `Side` | `Ask` (buy base) or `Bid` (sell base) |
+| `side` | `'ask' \| 'bid'` | `'ask'` (buy base) or `'bid'` (sell base) |
 | `amount` | `bigint` | Input amount to swap |
 | `minOut` | `bigint` | Minimum output (reverts if not met) |
 | `taker` | `PublicKey` | Taker wallet (signer) |
@@ -43,7 +41,7 @@ Always set `minOut` to protect against unfavorable execution:
 ```typescript
 // Calculate expected output
 const quote = await market.getQuote({
-  side: Side.Ask,
+  side: 'ask',
   amount: 1_000_000n,
 });
 
@@ -51,8 +49,8 @@ const quote = await market.getQuote({
 const slippageBps = 100; // 1%
 const minOut = quote.expectedOutput * (10000n - BigInt(slippageBps)) / 10000n;
 
-const tx = await Market.swapIx({
-  side: Side.Ask,
+const tx = await market.swap({
+  side: 'ask',
   amount: 1_000_000n,
   minOut,
   taker: wallet.publicKey,
@@ -65,7 +63,7 @@ Preview swap output before executing:
 
 ```typescript
 const quote = await market.getQuote({
-  side: Side.Ask,
+  side: 'ask',
   amount: 1_000_000n,
 });
 

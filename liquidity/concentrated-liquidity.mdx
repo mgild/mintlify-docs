@@ -61,12 +61,11 @@ If price leaves your range, you stop earning fees until it returns (or you repos
 ```typescript
 // Provide liquidity between $145-$155
 const ixs = await market.placeClmmPosition({
-  ask: {
-    pMin: 145_000_000n,       // Lower bound: $145
-    pMax: 155_000_000n,       // Upper bound: $155
-    amount: 10_000_000_000n,  // 10 SOL
-    exponent: 0,              // Uniform distribution
-  },
+  pMin: 145_000_000n,           // Lower bound: $145
+  pMax: 155_000_000n,           // Upper bound: $155
+  maxBase: 10_000_000_000n,     // Max 10 SOL to deposit
+  maxQuote: 1_500_000_000_000n, // Max 1500 USDC to deposit
+  // exponent defaults to 0 (uniform)
   owner: wallet,
 });
 ```

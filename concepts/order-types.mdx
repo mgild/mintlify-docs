@@ -83,26 +83,24 @@ Your order waits until someone sells at $145 or less. When filled, you receive S
 <Tabs>
   <Tab title="TypeScript">
 ```typescript
-import { Side } from '@braid/client';
-
-// Place a buy order: 10 SOL across $140-$145 range
-const tx = await market.placeLimitOrder({
-  side: Side.Bid,                    // Bid = buy
-  pMin: 140_000_000n,                // $140.00 (6 decimals)
-  pMax: 145_000_000n,                // $145.00 (6 decimals)
-  exponent: 0,                       // 0=uniform, 1=linear, 2+=concentrated
-  amount: 10_000_000_000n,           // 10 SOL (9 decimals)
-  owner: wallet.publicKey,
+// Place a buy order: bid across $140-$145 range
+const ix = await market.placeLimitOrder({
+  side: 'bid',
+  pMin: 140_000_000n,              // $140.00 (6 decimals)
+  pMax: 145_000_000n,              // $145.00 (6 decimals)
+  amount: 1_450_000_000n,          // 1450 USDC (6 decimals)
+  // exponent defaults to 0 (uniform)
+  owner: wallet,
 });
 
 // Sell order with concentrated curve (more liquidity at higher prices)
-const txConcentrated = await market.placeLimitOrder({
-  side: Side.Ask,                    // Ask = sell
-  pMin: 150_000_000n,                // $150.00
-  pMax: 160_000_000n,                // $160.00
-  exponent: 2,                       // Quadratic concentration
-  amount: 5_000_000_000n,            // 5 SOL
-  owner: wallet.publicKey,
+const ixConcentrated = await market.placeLimitOrder({
+  side: 'ask',
+  pMin: 150_000_000n,              // $150.00
+  pMax: 160_000_000n,              // $160.00
+  amount: 5_000_000_000n,          // 5 SOL (9 decimals)
+  exponent: 2,                     // Quadratic concentration
+  owner: wallet,
 });
 ```
   </Tab>
@@ -167,7 +165,7 @@ flowchart TB
     style A2 fill:#21252b,stroke:#98c379,color:#abb2bf
 ```
 
-The filled portion becomes a bid, ready to buy back if the price drops. This is automatic market making.
+The filled portion becomes a bid, ready to buy back if the price drops. This is automated market making.
 
 ### When to Use
 
@@ -180,26 +178,23 @@ The filled portion becomes a bid, ready to buy back if the price drops. This is 
 <Tabs>
   <Tab title="TypeScript">
 ```typescript
-import { Side } from '@braid/client';
-
 // Provide liquidity between $145-$155
-const tx = await market.placeClmmPosition({
-  side: Side.Ask,                    // Start as an ask (selling)
-  pMin: 145_000_000n,                // Lower bound: $145
-  pMax: 155_000_000n,                // Upper bound: $155
-  exponent: 0,                       // 0=uniform, 1=linear, 2+=concentrated
-  amount: 100_000_000_000n,          // 100 SOL worth of liquidity
-  owner: wallet.publicKey,
+const ixs = await market.placeClmmPosition({
+  pMin: 145_000_000n,              // Lower bound: $145
+  pMax: 155_000_000n,              // Upper bound: $155
+  maxBase: 100_000_000_000n,       // Max SOL to deposit
+  maxQuote: 15_000_000_000_000n,   // Max USDC to deposit
+  // exponent defaults to 0 (uniform)
+  owner: wallet,
 });
 
 // Narrower range = more concentrated = more fees (but more risk)
-const narrowRange = await market.placeClmmPosition({
-  side: Side.Bid,
-  pMin: 148_000_000n,                // $148
-  pMax: 152_000_000n,                // $152 (only $4 range!)
-  exponent: 0,
-  amount: 50_000_000_000n,
-  owner: wallet.publicKey,
+const narrowRangeIxs = await market.placeClmmPosition({
+  pMin: 148_000_000n,              // $148
+  pMax: 152_000_000n,              // $152 (only $4 range!)
+  maxBase: 50_000_000_000n,
+  maxQuote: 7_500_000_000_000n,
+  owner: wallet,
 });
 ```
   </Tab>
@@ -262,24 +257,20 @@ Makers quote tighter because: short exposure = lower risk = better prices
 <Tabs>
   <Tab title="TypeScript">
 ```typescript
-import { Side, getCurrentSlot } from '@braid/client';
-
-// Get the current slot
-const currentSlot = await getCurrentSlot(connection);
-
 // Place a PropAMM order - tightest spreads, zero fees
-const tx = await market.placePropOrder({
-  side: Side.Bid,
-  slot: currentSlot,                 // Valid for this slot only
-  pMin: 149_500_000n,                // $149.50 - tight range
-  pMax: 150_500_000n,                // $150.50 - around mid
-  exponent: 0,                       // 0=uniform, 1=linear, 2+=concentrated
-  amount: 10_000_000_000_000n,       // 10,000 SOL
-  owner: wallet.publicKey,
+const ixs = await market.placePropOrder({
+  pMin: 149_500_000n,              // $149.50 - tight range
+  pMax: 150_500_000n,              // $150.50 - around mid
+  maxBase: 10_000_000_000_000n,    // Max SOL
+  maxQuote: 1_500_000_000_000_000n, // Max USDC
+  bidExponent: 0,
+  askExponent: 0,
+  sequenceNumber: 1,
+  owner: wallet,
 });
 
 // Submit immediately - order expires in ~400ms!
-await sendAndConfirmTransaction(connection, tx, [wallet]);
+// Note: ixs is an array of instructions, build into a transaction first
 ```
   </Tab>
 </Tabs>
@@ -308,22 +299,20 @@ await sendAndConfirmTransaction(connection, tx, [wallet]);
     ```typescript
     // Buy when price drops
     await market.placeLimitOrder({
-      side: Side.Bid,
+      side: 'bid',
       pMin: 143_000_000n,
-      pMax: 145_000_000n,  // Buy around $145
-      exponent: 0,
-      amount: 10_000_000_000n,
-      owner: wallet.publicKey,
+      pMax: 145_000_000n,         // Buy around $145
+      amount: 1_450_000_000n,     // USDC to spend
+      owner: wallet,
     });
 
     // Sell at profit target
     await market.placeLimitOrder({
-      side: Side.Ask,
+      side: 'ask',
       pMin: 160_000_000n,
-      pMax: 165_000_000n,  // Sell around $160
-      exponent: 0,
-      amount: 10_000_000_000n,
-      owner: wallet.publicKey,
+      pMax: 165_000_000n,         // Sell around $160
+      amount: 10_000_000_000n,    // SOL to sell
+      owner: wallet,
     });
     ```
   </Tab>
@@ -338,12 +327,11 @@ await sendAndConfirmTransaction(connection, tx, [wallet]);
     const range = currentPrice / 20n; // 5% range
 
     await market.placeClmmPosition({
-      side: Side.Ask,
       pMin: currentPrice - range,
       pMax: currentPrice + range,
-      exponent: 0,
-      amount: liquidityAmount,
-      owner: wallet.publicKey,
+      maxBase: baseAmount,
+      maxQuote: quoteAmount,
+      owner: wallet,
     });
     ```
   </Tab>
@@ -354,16 +342,15 @@ await sendAndConfirmTransaction(connection, tx, [wallet]);
 
     ```typescript
     // Tight spread execution - zero fees
-    const slot = await getCurrentSlot(connection);
-
     await market.placePropOrder({
-      slot: slot,
-      side: Side.Bid,
-      pMin: 149_500_000n,  // Tight range around mid
+      pMin: 149_500_000n,
       pMax: 150_500_000n,
-      exponent: 0,
-      amount: 100_000_000_000_000n,
-      owner: wallet.publicKey,
+      maxBase: 100_000_000_000_000n,
+      maxQuote: 15_000_000_000_000_000n,
+      bidExponent: 0,
+      askExponent: 0,
+      sequenceNumber: 1,
+      owner: wallet,
     });
     ```
   </Tab>
