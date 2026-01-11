@@ -31,7 +31,6 @@ Executes a market order with optimal routing across all order sources.
 struct OrderbookTakeParams {
     amount: u64,          // Input amount
     min_out: u64,         // Minimum output (slippage)
-    limit_price: u64,     // Price limit (0 = no limit)
     side: u8,             // 0 = buy, 1 = sell
     min_order_bips: u16,  // Skip tiny orders
     max_orders: u32,      // Max orders to touch

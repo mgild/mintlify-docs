@@ -11,17 +11,21 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-braid-sdk = "0.1"
-solana-client = "2.0"
-solana-sdk = "2.0"
+braid-client = { version = "0.1", features = ["fetch"] }
+solana-client = "2.2"
+solana-pubkey = "2.2"
 ```
+
+<Note>
+The `fetch` feature enables RPC-based fetching. Without it, only PDA derivation and types are available.
+</Note>
 
 ## Basic Setup
 
 ```rust
-use braid_sdk::{Market, BRAID_ID};
+use braid_client::{Market, BRAID_ID};
 use solana_client::rpc_client::RpcClient;
-use solana_sdk::pubkey::Pubkey;
+use solana_pubkey::Pubkey;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rpc = RpcClient::new("https://api.mainnet-beta.solana.com");
@@ -29,10 +33,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load market
     let market_address: Pubkey = "...".parse()?;
     let market = Market::new(&rpc, market_address);
-    let data = market.fetch()?;
+    let account = market.fetch()?;
 
-    println!("Base mint: {}", data.mint_a);
-    println!("Quote mint: {}", data.mint_b);
+    println!("Base mint: {}", account.data.mint_a);
+    println!("Quote mint: {}", account.data.mint_b);
 
     Ok(())
 }
@@ -41,19 +45,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Derive Addresses
 
 ```rust
-use braid_sdk::{Market, ClmmOrders, LimitOrders};
+use braid_client::{
+    generated::accounts::Market as MarketData,
+    ClmmOrdersPda, LimitOrdersPda, BRAID_ID,
+};
 
-// Derive market PDA
-let (market_pda, _bump) = Market::derive_address(
+// Derive market PDA (static method on MarketData)
+let market_pda = MarketData::derive_address(
     &mint_a,
     &mint_b,
-    &seed,
+    &[0u8; 8],  // 8-byte seed
     &BRAID_ID,
 );
 
 // Derive shard PDAs
-let clmm_shard = ClmmOrders::derive_address(&market_pda, shard_idx, &BRAID_ID);
-let limit_shard = LimitOrders::derive_address(&market_pda, shard_idx, &BRAID_ID);
+let clmm_shard = ClmmOrdersPda::derive_address(&market_pda, shard_idx, &BRAID_ID);
+let limit_shard = LimitOrdersPda::derive_address(&market_pda, shard_idx, &BRAID_ID);
 ```
 
 ## Next Steps

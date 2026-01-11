@@ -12,48 +12,54 @@ The `take` instruction executes a market order by filling against the best avail
 ## Basic Swap
 
 ```typescript
+// Side values: 0 = Bid (sell base), 1 = Ask (buy base)
+const Side = { Bid: 0, Ask: 1 };
+
 // Buy base token (take from asks)
-const tx = await market.swap({
-  side: 'ask',
+const ix = await market.swap({
+  side: Side.Ask,           // 1 = buy base token
   amount: 1_000_000n,       // Input amount (quote tokens)
   minOut: 950_000n,         // Minimum output (slippage protection)
-  taker: wallet.publicKey,
+  taker: wallet,            // Transaction signer
+  takerInput: userQuoteAta, // Your input token account
+  takerOutput: userBaseAta, // Your output token account
 });
 
-const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
+// Add ix to a transaction and send
 ```
 
 ## Parameters
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `side` | `'ask' \| 'bid'` | `'ask'` (buy base) or `'bid'` (sell base) |
+| `side` | `number` | `0` (bid/sell base) or `1` (ask/buy base) |
 | `amount` | `bigint` | Input amount to swap |
 | `minOut` | `bigint` | Minimum output (reverts if not met) |
-| `taker` | `PublicKey` | Taker wallet (signer) |
-| `minOrderBips` | `number` | Skip orders below this % (optional) |
-| `maxOrders` | `number` | Max orders to touch (optional) |
+| `taker` | `TransactionSigner` | Taker wallet (signer) |
+| `takerInput` | `Address` | Taker's input token account |
+| `takerOutput` | `Address` | Taker's output token account |
+| `minOrderBips` | `number` | Skip orders below this % (optional, default 0) |
+| `maxOrders` | `number` | Max orders to fill (optional, default 100) |
 
 ## Slippage Protection
 
 Always set `minOut` to protect against unfavorable execution:
 
 ```typescript
-// Calculate expected output
-const quote = await market.getQuote({
-  side: 'ask',
-  amount: 1_000_000n,
-});
+// Fetch a quote to preview the swap
+const quote = await market.fetchQuote('buy', 1_000_000n);
 
 // Set minOut with 1% slippage tolerance
-const slippageBps = 100; // 1%
-const minOut = quote.expectedOutput * (10000n - BigInt(slippageBps)) / 10000n;
+const slippageBps = 100n; // 1%
+const minOut = quote.output * (10000n - slippageBps) / 10000n;
 
-const tx = await market.swap({
-  side: 'ask',
+const ix = await market.swap({
+  side: 1, // Ask = buy base
   amount: 1_000_000n,
   minOut,
-  taker: wallet.publicKey,
+  taker: wallet,
+  takerInput: userQuoteAta,
+  takerOutput: userBaseAta,
 });
 ```
 
@@ -62,14 +68,13 @@ const tx = await market.swap({
 Preview swap output before executing:
 
 ```typescript
-const quote = await market.getQuote({
-  side: 'ask',
-  amount: 1_000_000n,
-});
+// 'buy' hits asks (buy base with quote)
+// 'sell' hits bids (sell base for quote)
+const quote = await market.fetchQuote('buy', 1_000_000n);
 
-console.log('Expected output:', quote.expectedOutput);
-console.log('Price impact:', quote.priceImpact);
-console.log('Orders touched:', quote.ordersCount);
+console.log('Expected output:', quote.output);
+console.log('Average price:', quote.avgPrice);
+console.log('Orders touched:', quote.ordersConsumed);
 ```
 
 ## Routing

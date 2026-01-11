@@ -8,80 +8,92 @@ description: 'Load and query market state'
 ## Load a Market
 
 ```typescript
+import { createSolanaRpc, address } from '@solana/kit';
 import { Market } from '@braid/client';
 
-const market = await Market.load(connection, marketAddress);
+const rpc = createSolanaRpc('https://api.mainnet-beta.solana.com');
+const market = new Market(rpc, address('...'));
+
+// Fetch market data
+const state = await market.fetch();
 ```
 
 ## Market Properties
 
+After fetching, access data through `state.data`:
+
 ```typescript
+const state = await market.fetch();
+
 // Token mints
-market.mintA        // Base token mint
-market.mintB        // Quote token mint
+state.data.mintA        // Base token mint
+state.data.mintB        // Quote token mint
 
 // Vaults
-market.vaultA       // Base token vault
-market.vaultB       // Quote token vault
+state.data.orderbookVaultA   // Base token vault
+state.data.orderbookVaultB   // Quote token vault
 
 // Configuration
-market.clmmFeeBps   // CLMM taker fee (basis points)
-market.limitFeeBps  // Limit order taker fee
-market.isPaused     // Whether trading is paused
+state.data.clmmFeeBps   // CLMM taker fee (basis points)
+state.data.limitFeeBps  // Limit order taker fee
+state.data.isPaused     // Whether trading is paused
 ```
 
 ## Fetch Orderbook
 
 ```typescript
-// Fetch limit order shards
-const limitShards = await market.limitBids.fetchAllShards();
-const limitOrderbook = limitShards.toOrderbook();
+// Fetch all orders across all sources in one call
+const orders = await market.fetchAllOrders();
 
-// Iterate through bids (highest price first)
-for (const bid of limitOrderbook.iterateBids()) {
-  console.log(`Bid: ${bid.base.amountRemaining} @ ${bid.base.pMin}`);
+// Iterate through limit bids (highest price first)
+for (const bid of orders.limitBids.iterateBids()) {
+  console.log(`Limit Bid: ${bid.base.amountRemaining} @ ${bid.priceNode.key.price}`);
 }
 
-// Fetch asks
+// Iterate through limit asks (lowest price first)
+for (const ask of orders.limitAsks.iterateAsks()) {
+  console.log(`Limit Ask: ${ask.base.amountRemaining} @ ${ask.priceNode.key.price}`);
+}
+
+// Iterate through CLMM positions
+for (const position of orders.clmmBids.iterateBids()) {
+  console.log(`CLMM: ${position.base.amountRemaining} in range`);
+}
+
+// Or fetch individual shard types using shard fetchers
+const bidShards = await market.limitBids.fetchAllShards();
 const askShards = await market.limitAsks.fetchAllShards();
-const askOrderbook = askShards.toOrderbook();
-
-for (const ask of askOrderbook.iterateAsks()) {
-  console.log(`Ask: ${ask.base.amountRemaining} @ ${ask.base.pMin}`);
-}
-
-// Fetch CLMM positions
-const clmmShards = await market.clmmBids.fetchAllShards();
-const clmmOrderbook = clmmShards.toOrderbook();
-
-for (const position of clmmOrderbook.iterateBids()) {
-  console.log(`CLMM: ${position.base.liquidity} in range`);
-}
 ```
 
-## Find Markets
+## Load Market by Address
 
 ```typescript
-import { findMarkets } from '@braid/client';
+import { createSolanaRpc, address } from '@solana/kit';
+import { Market } from '@braid/client';
 
-// Find all markets for a token pair
-const markets = await findMarkets(connection, {
-  mintA: usdcMint,
-  mintB: solMint,
-});
+const rpc = createSolanaRpc('https://api.mainnet-beta.solana.com');
 
-// Find market by address
-const market = await Market.load(connection, marketAddress);
+// Load market by address
+const market = new Market(rpc, address('...'));
+const state = await market.fetch();
+
+// Or check if market exists first
+const maybeState = await market.fetchMaybe();
+if (maybeState) {
+  console.log('Market exists');
+}
 ```
 
 ## Derive Market Address
 
 ```typescript
+import { address } from '@solana/kit';
 import { Market } from '@braid/client';
 
-const [marketPda] = Market.deriveAddress(
-  mintA,
-  mintB,
-  seed,  // 8-byte seed for uniqueness
+// Derive market PDA from token mints and seed
+const marketPda = await Market.deriveAddress(
+  address('MintA...'),  // Base token mint
+  address('MintB...'),  // Quote token mint
+  new Uint8Array(8),    // 8-byte seed for uniqueness (optional)
 );
 ```

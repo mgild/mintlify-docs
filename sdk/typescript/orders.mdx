@@ -65,12 +65,12 @@ const ixs = await market.placePropOrder({
 ## Cancel a Limit Order
 
 ```typescript
-const tx = await market.cancelLimitOrder({
+const ix = await market.cancelLimitOrder({
   orderId: 42,
   owner: wallet,
 });
 
-const sig = await sendAndConfirmTransaction(connection, tx, [wallet]);
+// Add ix to a transaction and send
 ```
 
 ## Cancel a CLMM Position
@@ -83,16 +83,6 @@ const ixs = await market.cancelClmmPosition({
 
 // Both bid and ask sides are cancelled together
 // ixs contains instructions for cancelling both sides
-```
-
-## Get User Orders
-
-```typescript
-const userOrders = await market.getUserOrders(wallet.publicKey);
-
-for (const order of userOrders) {
-  console.log(`Order ${order.idx}: ${order.side} ${order.amount} @ ${order.price}`);
-}
 ```
 
 ## Order Parameters

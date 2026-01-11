@@ -37,28 +37,31 @@ description: 'Install the Braid TypeScript SDK'
 
 ## Peer Dependencies
 
-The SDK requires `@solana/web3.js`:
+The SDK requires `@solana/web3.js` v2 (which includes `@solana/kit`):
 
 ```bash
-npm install @solana/web3.js
+npm install @solana/web3.js@2
 ```
 
 ## Basic Setup
 
 ```typescript
-import { Connection, PublicKey } from '@solana/web3.js';
-import { Market, BRAID_PROGRAM_ID } from '@braid/client';
+import { createSolanaRpc, address } from '@solana/kit';
+import { Market, BRAID_PROGRAM_ADDRESS } from '@braid/client';
 
 // Connect to Solana
-const connection = new Connection('https://api.mainnet-beta.solana.com');
+const rpc = createSolanaRpc('https://api.mainnet-beta.solana.com');
 
-// Load a market
-const marketAddress = new PublicKey('...');
-const market = await Market.load(connection, marketAddress);
+// Create market instance
+const marketAddress = address('...');
+const market = new Market(rpc, marketAddress);
 
-console.log('Market loaded:', market.address.toBase58());
-console.log('Base mint:', market.mintA.toBase58());
-console.log('Quote mint:', market.mintB.toBase58());
+// Fetch market data
+const state = await market.fetch();
+
+console.log('Market loaded:', market.address);
+console.log('Base mint:', state.data.mintA);
+console.log('Quote mint:', state.data.mintB);
 ```
 
 ## Environment Variables
