@@ -16,7 +16,25 @@
     });
   }
 
+  // Fix Playground tab navigation
+  function fixPlaygroundTab() {
+    document.querySelectorAll('a, button').forEach(el => {
+      if (el.textContent.trim() === 'Playground' && !el.dataset.fixed) {
+        el.dataset.fixed = 'true';
+        el.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          window.location.href = '/curve-playground';
+        });
+      }
+    });
+  }
+
   function init() {
+    // Fix Playground tab
+    fixPlaygroundTab();
+    setTimeout(fixPlaygroundTab, 1000);
+
     // Hide controls after a delay and periodically
     setTimeout(hideControls, 1000);
     setInterval(hideControls, 2000);

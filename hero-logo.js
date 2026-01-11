@@ -79,9 +79,13 @@
   };
 
   function createExponentChart() {
-    if (document.querySelector('.exponent-chart')) return;
     // Don't show on mobile
-    if (window.innerWidth < 768) return;
+    if (window.innerWidth < 768) {
+      const existing = document.querySelector('.exponent-chart');
+      if (existing) existing.remove();
+      return;
+    }
+    if (document.querySelector('.exponent-chart')) return;
 
     const container = document.createElement('div');
     container.className = 'exponent-chart';
@@ -204,6 +208,14 @@
   } else {
     tryInject();
   }
+
+  // Hide chart on resize to mobile
+  window.addEventListener('resize', () => {
+    if (window.innerWidth < 768) {
+      const chart = document.querySelector('.exponent-chart');
+      if (chart) chart.remove();
+    }
+  });
 
   let lastPath = window.location.pathname;
   const observer = new MutationObserver(function() {
