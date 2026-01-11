@@ -13,6 +13,8 @@
       if (picker) picker.remove();
       const chart = document.querySelector('.exponent-chart');
       if (chart) chart.remove();
+      const restore = document.querySelector('.exponent-chart-restore');
+      if (restore) restore.remove();
       return;
     }
 
@@ -83,13 +85,49 @@
     if (window.innerWidth < 768) {
       const existing = document.querySelector('.exponent-chart');
       if (existing) existing.remove();
+      const existingRestore = document.querySelector('.exponent-chart-restore');
+      if (existingRestore) existingRestore.remove();
       return;
     }
-    if (document.querySelector('.exponent-chart')) return;
+    if (document.querySelector('.exponent-chart') || document.querySelector('.exponent-chart-restore')) return;
 
     const container = document.createElement('div');
     container.className = 'exponent-chart';
     container.style.cssText = 'position: fixed; bottom: 20px; right: 20px; background: #1a1a1a; padding: 10px; border-radius: 8px; z-index: 9999;';
+
+    // Create toggle button
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'exponent-chart-toggle';
+    toggleBtn.innerHTML = '×';
+    toggleBtn.title = 'Hide chart';
+    toggleBtn.style.cssText = 'position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; background: #333; color: #888; border: none; border-radius: 50%; cursor: pointer; font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center; z-index: 10000;';
+    toggleBtn.addEventListener('mouseenter', () => { toggleBtn.style.background = '#444'; toggleBtn.style.color = '#fff'; });
+    toggleBtn.addEventListener('mouseleave', () => { toggleBtn.style.background = '#333'; toggleBtn.style.color = '#888'; });
+
+    // Create restore button (hidden initially)
+    const restoreBtn = document.createElement('button');
+    restoreBtn.className = 'exponent-chart-restore';
+    restoreBtn.innerHTML = '📈';
+    restoreBtn.title = 'Show curve chart';
+    restoreBtn.style.cssText = 'position: fixed; bottom: 20px; right: 20px; width: 36px; height: 36px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; cursor: pointer; font-size: 16px; display: none; z-index: 9999;';
+    restoreBtn.addEventListener('mouseenter', () => { restoreBtn.style.background = '#2a2a2a'; });
+    restoreBtn.addEventListener('mouseleave', () => { restoreBtn.style.background = '#1a1a1a'; });
+
+    toggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      container.style.display = 'none';
+      restoreBtn.style.display = 'flex';
+      restoreBtn.style.alignItems = 'center';
+      restoreBtn.style.justifyContent = 'center';
+    });
+
+    restoreBtn.addEventListener('click', () => {
+      container.style.display = 'block';
+      restoreBtn.style.display = 'none';
+    });
+
+    container.appendChild(toggleBtn);
+    document.body.appendChild(restoreBtn);
 
     const canvas = document.createElement('canvas');
     canvas.width = 150;
@@ -214,6 +252,8 @@
     if (window.innerWidth < 768) {
       const chart = document.querySelector('.exponent-chart');
       if (chart) chart.remove();
+      const restore = document.querySelector('.exponent-chart-restore');
+      if (restore) restore.remove();
     }
   });
 
