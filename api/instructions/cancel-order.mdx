@@ -9,11 +9,28 @@ description: 'Cancel limit, CLMM, or PropAMM orders'
 
 Cancels a limit order and refunds tokens.
 
+### Accounts
+
+| # | Account | Writable | Signer | Description |
+|---|---------|----------|--------|-------------|
+| 0 | Market | Yes | No | Market account |
+| 1 | Current Shard | Yes | No | Shard containing the order |
+| 2 | Left Shard | Yes | No | Adjacent shard (lower prices) |
+| 3 | Right Shard | Yes | No | Adjacent shard (higher prices) |
+| 4 | User Token | Yes | No | User's token account |
+| 5 | Vault | Yes | No | Market vault |
+| 6 | Owner | No | Yes | Order owner (signer) |
+| 7 | Mint | No | No | Token mint |
+| 8 | Token Program | No | No | SPL Token program |
+| 9 | ATA Program | No | No | Associated Token program |
+| 10 | System Program | No | No | System program |
+
 ### Parameters
+
 ```rust
 struct CancelLimitOrderParams {
-    idx: u32,
-    side: u8,
+    idx: u32,       // Order index to cancel
+    side: u8,       // 0 = Bid, 1 = Ask
 }
 ```
 
@@ -23,16 +40,37 @@ struct CancelLimitOrderParams {
 
 Cancels a CLMM position (both primary and inverse orders).
 
+### Accounts
+
+| # | Account | Writable | Signer | Description |
+|---|---------|----------|--------|-------------|
+| 0 | Market | Yes | No | Market account |
+| 1 | Current Shard | Yes | No | Shard containing the position |
+| 2 | Left Shard | Yes | No | Adjacent shard (lower prices) |
+| 3 | Right Shard | Yes | No | Adjacent shard (higher prices) |
+| 4 | User Token A | Yes | No | User's base token account |
+| 5 | User Token B | Yes | No | User's quote token account |
+| 6 | Vault A | Yes | No | Market base vault |
+| 7 | Vault B | Yes | No | Market quote vault |
+| 8 | Owner | No | Yes | Position owner (signer) |
+| 9 | Mint A | No | No | Base token mint |
+| 10 | Mint B | No | No | Quote token mint |
+| 11 | Token Program A | No | No | Token program for base |
+| 12 | Token Program B | No | No | Token program for quote |
+| 13 | ATA Program | No | No | Associated Token program |
+| 14 | System Program | No | No | System program |
+
 ### Parameters
+
 ```rust
 struct CancelClmmPositionParams {
-    idx: u32,
-    side: u8,
+    idx: u32,       // Position index to cancel
+    side: u8,       // 0 = Bid, 1 = Ask
 }
 ```
 
 <Note>
-Cancelling a CLMM position refunds from **both** vaults since liquidity may have flipped.
+Cancelling a CLMM position refunds from **both** vaults since liquidity may have flipped between tokens.
 </Note>
 
 ---
@@ -41,10 +79,22 @@ Cancelling a CLMM position refunds from **both** vaults since liquidity may have
 
 Cancels a PropAMM order.
 
+### Accounts
+
+| # | Account | Writable | Signer | Description |
+|---|---------|----------|--------|-------------|
+| 0 | Market | No | No | Market account |
+| 1 | Order Account | Yes | No | PropAMM orders account |
+| 2 | User Token | Yes | No | User's token account |
+| 3 | Vault | Yes | No | Market vault |
+| 4 | Owner | No | Yes | Order owner (signer) |
+| 5 | Token Program | No | No | SPL Token program |
+
 ### Parameters
+
 ```rust
 struct CancelPropOrderParams {
-    idx: u32,
-    side: u8,
+    idx: u32,       // Order index to cancel
+    side: u8,       // 0 = Bid, 1 = Ask
 }
 ```

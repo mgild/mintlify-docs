@@ -176,22 +176,17 @@ When a shard exceeds **75% capacity** and its neighbors are also full:
 
 flowchart LR
     subgraph Before["Before (Shard 80% full)"]
-        BeforeSpacer[ ]
         B0["Shard 0<br/>$0-$200<br/>[160 orders]"]
-        BeforeSpacer --> B0
     end
 
-    Before -->|Split| After
+    B0 -->|Split| A0
+    B0 -->|Split| A1
 
     subgraph After["After"]
-        AfterSpacer[ ]
         A0["Shard 0<br/>$0-$100<br/>[80 orders]"]
         A1["Shard 1<br/>$100-$200<br/>[80 orders]"]
-        AfterSpacer --> A0
     end
 
-    style BeforeSpacer fill:transparent,stroke:transparent,color:transparent
-    style AfterSpacer fill:transparent,stroke:transparent,color:transparent
     style B0 fill:#21252b,stroke:#e06c75,color:#abb2bf
     style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
     style A1 fill:#21252b,stroke:#98c379,color:#abb2bf
@@ -206,23 +201,18 @@ When two adjacent shards are both below **25% capacity**:
 ```mermaid
 
 flowchart LR
-    subgraph Before
-        BeforeSpacer2[ ]
+    subgraph Before["Before"]
         B0["Shard 0 (15%)<br/>[30 orders]"]
         B1["Shard 1 (10%)<br/>[20 orders]"]
-        BeforeSpacer2 --> B0
     end
 
-    Before -->|Merge| After
+    B0 -->|Merge| A0
+    B1 -->|Merge| A0
 
     subgraph After["After (Shard 1 deleted)"]
-        AfterSpacer2[ ]
         A0["Shard 0 (25%)<br/>[50 orders]"]
-        AfterSpacer2 --> A0
     end
 
-    style BeforeSpacer2 fill:transparent,stroke:transparent,color:transparent
-    style AfterSpacer2 fill:transparent,stroke:transparent,color:transparent
     style B0 fill:#21252b,stroke:#e5c07b,color:#abb2bf
     style B1 fill:#21252b,stroke:#e5c07b,color:#abb2bf
     style A0 fill:#21252b,stroke:#98c379,color:#abb2bf
@@ -235,24 +225,19 @@ When one shard is sparse but its neighbor has room:
 ```mermaid
 
 flowchart LR
-    subgraph Before
-        BeforeSpacer3[ ]
+    subgraph Before["Before"]
         B0["Shard 0 (20%)"]
         B1["Shard 1 (60%)"]
-        BeforeSpacer3 --> B0
     end
 
-    Before -->|"Rebalance<br/>(Orders migrate)"| After
+    B0 -->|Rebalance| A0
+    B1 -->|Rebalance| A1
 
-    subgraph After
-        AfterSpacer3[ ]
+    subgraph After["After"]
         A0["Shard 0 (40%)"]
         A1["Shard 1 (40%)"]
-        AfterSpacer3 --> A0
     end
 
-    style BeforeSpacer3 fill:transparent,stroke:transparent,color:transparent
-    style AfterSpacer3 fill:transparent,stroke:transparent,color:transparent
     style B0 fill:#21252b,stroke:#e5c07b,color:#abb2bf
     style B1 fill:#21252b,stroke:#61afef,color:#abb2bf
     style A0 fill:#21252b,stroke:#98c379,color:#abb2bf

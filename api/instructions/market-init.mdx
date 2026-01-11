@@ -27,13 +27,19 @@ Creates a new market for a token pair.
 
 ```rust
 struct MarketInitParams {
-    seed: [u8; 8],              // Unique market seed
-    clmm_fee_bps: u16,          // CLMM taker fee
-    limit_fee_bps: u16,         // Limit order taker fee
-    protocol_fee_bps: u16,      // Protocol fee share
-    cp_amm_swap_fee_bps: u16,   // CP-AMM swap fee
+    seed: [u8; 8],                // Unique market seed
+    clmm_fee_bps: u16,            // CLMM taker fee
+    limit_fee_bps: u16,           // Limit order taker fee
+    protocol_fee_bps: u16,        // Protocol fee share
+    cp_amm_swap_fee_bps: u16,     // CP-AMM swap fee
+    prop_amm_base_fee_bps: u16,   // PropAMM base fee (typically 0)
+    prop_amm_slot_fee_bps: u16,   // PropAMM slot fee (typically 0)
 }
 ```
+
+<Note>
+PropAMM fees are typically set to 0. The zero-fee model compensates makers for the short (~400ms) order lifetime.
+</Note>
 
 ## Usage
 
@@ -49,6 +55,8 @@ const tx = await marketInit({
     limitFeeBps: 10,
     protocolFeeBps: 1000,
     cpAmmSwapFeeBps: 30,
+    propAmmBaseFeeBps: 0,
+    propAmmSlotFeeBps: 0,
   },
 });
 ```

@@ -7,28 +7,47 @@ description: 'Place limit, CLMM, or PropAMM orders'
 
 ## PlaceLimitOrder
 
-Places a density limit order.
+Places a density limit order across a price range.
 
 ### Accounts
-| # | Account | Writable | Signer |
-|---|---------|----------|--------|
-| 0 | Market | Yes | No |
-| 1 | Shard | Yes | No |
-| 2 | User | Yes | No |
-| 3 | User Token | Yes | No |
-| 4 | Vault | Yes | No |
-| 5 | Owner | No | Yes |
-| 6 | Token Program | No | No |
+
+| # | Account | Writable | Signer | Description |
+|---|---------|----------|--------|-------------|
+| 0 | Market | Yes | No | Market account |
+| 1 | Current Shard | Yes | No | Target shard for this price range |
+| 2 | Left Shard | Yes | No | Adjacent shard (lower prices) |
+| 3 | Right Shard | Yes | No | Adjacent shard (higher prices) |
+| 4 | Next Available Shard | Yes | No | For splits if needed |
+| 5 | User Token | Yes | No | User's token account |
+| 6 | Vault | Yes | No | Market vault |
+| 7 | Owner | No | Yes | Order owner (signer) |
+| 8 | Mint | No | No | Token mint |
+| 9 | Token Program | No | No | SPL Token program |
+| 10 | ATA Program | No | No | Associated Token program |
+| 11 | System Program | No | No | System program |
 
 ### Parameters
+
 ```rust
 struct PlaceLimitOrderParams {
-    price: u64,
-    amount: u64,
-    side: u8,
-    expires_at: i64,
+    idx: u32,           // Order index (0 = create new)
+    order_id: u64,      // Order ID to verify on update
+    amount: u64,        // Order amount
+    p_min: u64,         // Lower price bound
+    p_max: u64,         // Upper price bound
+    exponent: u32,      // Density curve exponent (0=uniform, 1=linear, 2+=concentrated)
+    side: u8,           // 0 = Bid, 1 = Ask
+    mode: u8,           // 0 = standard, 1 = postOnly, 2 = ioc
 }
 ```
+
+### Execution Modes
+
+| Mode | Value | Behavior |
+|------|-------|----------|
+| Standard | 0 | Cross if possible, rest on book |
+| Post-Only | 1 | Reject if would cross spread |
+| IOC | 2 | Fill immediately, cancel remainder |
 
 ---
 
@@ -36,28 +55,78 @@ struct PlaceLimitOrderParams {
 
 Places a concentrated liquidity position.
 
+### Accounts
+
+| # | Account | Writable | Signer | Description |
+|---|---------|----------|--------|-------------|
+| 0 | Market | Yes | No | Market account |
+| 1 | Current Shard | Yes | No | Target shard for this price range |
+| 2 | Left Shard | Yes | No | Adjacent shard (lower prices) |
+| 3 | Right Shard | Yes | No | Adjacent shard (higher prices) |
+| 4 | Next Available Shard | Yes | No | For splits if needed |
+| 5 | User Token A | Yes | No | User's base token account |
+| 6 | User Token B | Yes | No | User's quote token account |
+| 7 | Vault A | Yes | No | Market base vault |
+| 8 | Vault B | Yes | No | Market quote vault |
+| 9 | Owner | No | Yes | Position owner (signer) |
+| 10 | Mint A | No | No | Base token mint |
+| 11 | Mint B | No | No | Quote token mint |
+| 12 | Token Program A | No | No | Token program for base |
+| 13 | Token Program B | No | No | Token program for quote |
+| 14 | ATA Program | No | No | Associated Token program |
+| 15 | System Program | No | No | System program |
+
 ### Parameters
+
 ```rust
 struct PlaceClmmPositionParams {
-    p_min: u64,
-    p_max: u64,
-    amount: u64,
-    side: u8,
+    idx: u32,           // Position index (0 = create new)
+    order_id: u64,      // Order ID to verify on update
+    amount: u64,        // Position amount
+    p_min: u64,         // Lower price bound
+    p_max: u64,         // Upper price bound
+    exponent: u32,      // Density curve exponent (scaled by 1000, e.g., 2000 = n=2)
+    side: u8,           // 0 = Bid, 1 = Ask
+    mode: u8,           // 0 = standard, 1 = postOnly
 }
 ```
+
+<Note>
+CLMM positions create paired bid+ask orders. Filled liquidity automatically "flips" to the inverse side.
+</Note>
 
 ---
 
 ## PlacePropOrder
 
-Places a slot-scoped proportional order.
+Places a slot-scoped PropAMM order with zero fees.
+
+### Accounts
+
+| # | Account | Writable | Signer | Description |
+|---|---------|----------|--------|-------------|
+| 0 | Market | No | No | Market account |
+| 1 | Order Account | Yes | No | PropAMM orders account |
+| 2 | User Token | Yes | No | User's token account |
+| 3 | Vault | Yes | No | Market vault |
+| 4 | Owner | No | Yes | Order owner (signer) |
+| 5 | Token Program | No | No | SPL Token program |
 
 ### Parameters
+
 ```rust
 struct PlacePropOrderParams {
-    slot: u64,
-    price: u64,
-    amount: u64,
-    side: u8,
+    idx: u32,           // Order index (0 = create new)
+    order_id: u64,      // Order ID to verify on update
+    amount: u64,        // Order amount
+    p_min: u64,         // Lower price bound
+    p_max: u64,         // Upper price bound
+    exponent: u32,      // Density curve exponent (scaled by 1000)
+    side: u8,           // 0 = Bid, 1 = Ask
+    mode: u8,           // 0 = standard, 1 = postOnly
 }
 ```
+
+<Note>
+PropAMM orders expire after ~400ms (1 slot). Submit early in the slot for best fills.
+</Note>

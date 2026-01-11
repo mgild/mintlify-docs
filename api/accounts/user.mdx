@@ -40,15 +40,6 @@ struct UserOrdersHeader {
 }
 ```
 
-### Eviction Tracking
+### Automatic Eviction
 
-Users cannot place new orders while they have pending evictions:
-
-```rust
-// Check before placing
-if user_orders.pending_evictions > 0 {
-    return Err(BraidError::PendingEvictions);
-}
-```
-
-Users must claim evicted orders before placing new ones.
+When placing new PropAMM orders, any expired slot-scoped orders are automatically evicted and their funds returned. This happens transparently during the place instruction - no separate claim step is needed.

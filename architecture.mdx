@@ -18,12 +18,14 @@ graph TB
     end
 
     subgraph Market["Market - per trading pair"]
+        MarketSpacer[ ]
         M1[CpAmm]
         M2["ClmmOrders[]"]
         M3["LimitOrders[]"]
         M4[PropAmmOrders]
         M5[ExternalRoutes]
     end
+    style MarketSpacer fill:none,stroke:none
 
     subgraph User["User - per wallet"]
         U1[UserOrdersHeader - per user per market]

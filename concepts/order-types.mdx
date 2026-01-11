@@ -221,13 +221,18 @@ PropAMM orders enable the **tightest spreads** on Braid through zero fees and sl
 
 Traditional order types add fees on top of the bid-ask spread:
 
-```
-Effective Spread Comparison:
-┌─────────────────────────────────────────────────────────┐
-│  Limit Order:  1bp spread + 20bp fee = 21bp effective   │
-│  CLMM Order:   1bp spread + 30bp fee = 31bp effective   │
-│  PropAMM:      1bp spread + 0bp fee  = 1bp effective    │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+graph LR
+    subgraph spread["Effective Spread Comparison"]
+        SpreadSpacer[ ]
+        L["Limit Order: 1bp spread + 20bp fee = <b>21bp</b>"]
+        C["CLMM Order: 1bp spread + 30bp fee = <b>31bp</b>"]
+        P["PropAMM: 1bp spread + 0bp fee = <b>1bp</b>"]
+    end
+    style SpreadSpacer fill:none,stroke:none
+    style L fill:#21252b,stroke:#61afef,color:#abb2bf
+    style C fill:#21252b,stroke:#c678dd,color:#abb2bf
+    style P fill:#21252b,stroke:#98c379,color:#abb2bf
 ```
 
 ### Why PropAMM Spreads Are Tighter
@@ -237,13 +242,22 @@ Two mechanisms enable ultra-competitive pricing:
 1. **Zero fees**: No fee overhead means the quoted spread is the actual spread
 2. **Slot-scoping**: ~400ms validity reduces adverse selection, so makers quote tighter
 
+```mermaid
+flowchart LR
+    subgraph timeline["PropAMM Timeline"]
+        TimelineSpacer[ ]
+        S["Slot N"] --> O["Order placed<br/>(0 fees)"]
+        O --> V["Valid ~400ms"]
+        V --> E["Expires"]
+    end
+    style TimelineSpacer fill:none,stroke:none
+    style S fill:#21252b,stroke:#e5c07b,color:#abb2bf
+    style O fill:#21252b,stroke:#98c379,color:#abb2bf
+    style V fill:#21252b,stroke:#61afef,color:#abb2bf
+    style E fill:#21252b,stroke:#e06c75,color:#abb2bf
 ```
-PropAMM Timeline:
-│ Slot N │ ←── Order placed (0 fees) ←── Valid ~400ms ←── Expires
-└────────┘
 
 Makers quote tighter because: short exposure = lower risk = better prices
-```
 
 ### When to Use
 
@@ -331,6 +345,7 @@ const ixs = await market.placePropOrder({
       pMax: currentPrice + range,
       maxBase: baseAmount,
       maxQuote: quoteAmount,
+      exponent: 0,                     // Uniform distribution
       owner: wallet,
     });
     ```
