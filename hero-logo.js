@@ -6,7 +6,7 @@
     const path = window.location.pathname;
     const isIntroPage = path === '/' || path === '/introduction' || path === '/introduction/';
 
-    if (!isIntroPage || window.location.pathname.includes('curve-playground')) {
+    if (!isIntroPage || window.location.pathname.includes('density-orders')) {
       const existing = document.querySelector('.hero-logo');
       if (existing) existing.remove();
       const picker = document.querySelector('.color-picker-container');
@@ -135,7 +135,7 @@
     canvas.style.cssText = 'display: block; cursor: pointer;';
     canvas.title = 'Click to open Curve Playground';
     canvas.addEventListener('click', () => {
-      window.location.href = '/curve-playground';
+      window.location.href = '/density-orders';
     });
 
     const label = document.createElement('div');

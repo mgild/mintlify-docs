@@ -541,7 +541,7 @@
 
   // Check periodically for the containers
   function checkInit() {
-    if (window.location.pathname.includes('curve-playground')) {
+    if (window.location.pathname.includes('density-orders')) {
       init();
       initGammaDemo();
     }

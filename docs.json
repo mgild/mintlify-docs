@@ -2,8 +2,14 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "Braid Protocol",
+  "redirects": [
+    {
+      "source": "/curve-playground",
+      "destination": "/density-orders"
+    }
+  ],
   "css": "/custom.css",
-  "js": ["/mermaid-modal.js", "/pdf-download.js", "/hero-logo.js", "/curve-playground.js"],
+  "js": ["/mermaid-modal.js", "/pdf-download.js", "/hero-logo.js", "/density-orders.js"],
   "colors": {
     "primary": "#6366f1",
     "light": "#818cf8",
@@ -31,7 +37,7 @@
                   "introduction",
                   "quickstart",
                   "architecture",
-                  "curve-playground"
+                  "density-orders"
                 ]
               },
               {
@@ -105,8 +111,15 @@
             ]
           },
           {
-            "tab": "Playground",
-            "url": "curve-playground"
+            "tab": "Density Orders",
+            "groups": [
+              {
+                "group": "Playground",
+                "pages": [
+                  "density-orders"
+                ]
+              }
+            ]
           }
         ]
       }
