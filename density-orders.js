@@ -49,7 +49,7 @@
       const spreadBps = parseInt(spreadSlider.value);
       const rangePct = parseInt(rangeSlider.value) / 10;
       const gamma = parseInt(gammaSlider.value) / 10;
-      const skew = -parseInt(skewSlider.value) / 100;
+      const skew = parseInt(skewSlider.value) / 100;
 
       // Update labels
       document.getElementById('pg-spread-val').textContent = spreadBps;
