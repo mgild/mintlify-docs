@@ -128,17 +128,19 @@ const ixs = await market.placeClmmPosition({
 });
 ```
 
-## Density Curves (Exponent)
+## Density Curves (Gamma/Exponent)
 
-The `exponent` parameter controls how your liquidity is distributed across the range:
+The `exponent` parameter (also called gamma) controls how your liquidity is distributed across the range:
 
 | Exponent | Distribution | Best for |
 |----------|--------------|----------|
+| -5 to -1 | Front-loaded - more liquidity near the spread | Aggressive quoting, quick fills |
 | 0 | Uniform - equal liquidity everywhere | General purpose |
-| 1 | Linear - more liquidity toward one edge | Directional bias |
-| 2+ | Concentrated - most liquidity at edges | Advanced strategies |
+| +1 to +5 | Back-loaded - more liquidity at range edges | Gradual DCA, tail risk capture |
 
-For most users, `exponent: 0` (uniform) is the right choice.
+The `curveShift` parameter (-1 to +1) shifts the distribution horizontally within your range without changing its shape.
+
+For most users, `exponent: 0` (uniform) is the right choice. Market makers typically use non-zero exponents with skew adjustments.
 
 ## Impermanent Loss
 
@@ -159,7 +161,8 @@ The loss is "impermanent" because it reverses if price returns to your entry poi
 | `pMax` | `bigint` | Upper price bound |
 | `maxBase` | `bigint` | Maximum base token (token A) to deposit |
 | `maxQuote` | `bigint` | Maximum quote token (token B) to deposit |
-| `exponent` | `number?` | Density curve (0=uniform, 1=linear, 2+=concentrated). Defaults to 0 |
+| `exponent` | `number?` | Gamma/density curve shape (-5 to +5). Positive = more density at edges, Negative = more density near mid, Zero = uniform. Defaults to 0 |
+| `curveShift` | `number?` | Horizontal shift of density within range (-1 to +1). Defaults to 0 |
 | `owner` | `TransactionSigner` | Position owner (signer) |
 
 ## When to Use CLMM

@@ -85,11 +85,17 @@ struct PlaceClmmPositionParams {
     amount: u64,        // Position amount
     p_min: u64,         // Lower price bound
     p_max: u64,         // Upper price bound
-    exponent: u32,      // Density curve exponent (scaled by 1000, e.g., 2000 = n=2)
+    exponent: i32,      // Density curve exponent (scaled by 1000, e.g., 2000 = n=2, -1500 = n=-1.5)
+    curve_shift: i32,   // Curve shift (scaled by 1000). Shifts density distribution within range.
     side: u8,           // 0 = Bid, 1 = Ask
     mode: u8,           // 0 = standard, 1 = postOnly
 }
 ```
+
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| `exponent` | -5000 to +5000 | Gamma/curve shape. Positive = density at edges, Negative = density near spread, Zero = uniform |
+| `curve_shift` | -1000 to +1000 | Horizontal shift of density curve within the range |
 
 <Note>
 CLMM positions create paired bid+ask orders. Filled liquidity automatically "flips" to the inverse side.

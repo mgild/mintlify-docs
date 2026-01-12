@@ -1,11 +1,11 @@
 ---
 title: Curve Playground
-description: 'Interactive density curve explorer - visualize how your liquidity is distributed across price ranges'
+description: 'Interactive market maker curve visualizer - design your bid/ask liquidity distribution'
 ---
 
-# Density Curve Playground
+# Market Maker Curve Playground
 
-Density curves are the mathematical heart of Braid. They define **how your liquidity is distributed across a price range**. This interactive playground lets you experiment with different curve shapes and see exactly where your capital will be deployed.
+This interactive playground lets you design **two-sided liquidity curves** using market maker parameters. See how spread, gamma, and skew affect your bid and ask distributions in real-time.
 
 <div id="curve-playground"></div>
 
@@ -15,298 +15,291 @@ Density curves are the mathematical heart of Braid. They define **how your liqui
 
 ### What You're Looking At
 
-The chart shows your **liquidity density** (Y-axis) across a **price range** (X-axis):
+The chart shows your **bid and ask liquidity** distributed around a central mid price:
 
 | Element | Meaning |
 |---------|---------|
-| **White dashed line** (left edge) | Current spot price - where the market is now |
-| **Blue filled area** | Your liquidity distribution across the range |
-| **Gray dotted line** | Average execution price - where most of your order will fill |
-| **X-axis** | Price range from spot (left) to upper bound (right) |
+| **White dashed line** (center) | Mid price - the reference point for your quotes |
+| **Green curve** (left) | Bid orders - where you're buying |
+| **Red curve** (right) | Ask orders - where you're selling |
+| **Gray zone** (center) | Spread - the gap between your bid and ask |
 | **Y-axis** | Relative liquidity density at each price |
 
 ### The Controls
 
-| Control | What It Does |
-|---------|--------------|
-| **Exponent** | Shape of the curve (-5 to +5). Controls where liquidity concentrates. |
-| **Curve Shift** | Horizontal shift (-1 to +1). Moves the curve's distribution left or right within the range. |
-| **Start Price** | Lower bound of your range (% from spot to upper) |
-| **End Price** | Upper bound of your range (% from spot to upper) |
+| Control | Range | What It Does |
+|---------|-------|--------------|
+| **Spread** | 5-500 bps | Distance from mid price to your quotes. Wider = safer but less competitive. |
+| **Range** | 1-20% | How far your liquidity extends beyond the spread. Wider = more price coverage. |
+| **Gamma** | -5 to +5 | Curve shape. Negative = front-loaded (near spread), Positive = back-loaded (at edges), Zero = uniform. |
+| **Skew** | -1 to +1 | Inventory adjustment. Negative = long (aggressive asks), Positive = short (aggressive bids). |
 
 ---
 
-## How Exponent Shapes Your Curve
+## How Gamma Shapes Your Curves
 
-The exponent is the most important parameter. It determines whether your liquidity concentrates **near the current price** or **far from it**.
+Gamma (also called exponent) controls **where your liquidity concentrates** within your range.
 
-### Negative Exponent (e.g., -2.0)
+### Negative Gamma (e.g., -2.0)
 
-**More liquidity near spot price, less at the edges.**
-
-```
-Density
-  │
-  █████
-  ██████████
-  ███████████████
-  ████████████████████
-  ──────────────────────────► Price
-  Spot                    Upper
-```
-
-**Use cases:**
-- **Conservative DCA**: Buy more at prices close to current, less as price falls further
-- **Tight range LP**: Concentrate liquidity where most trading happens
-- **Mean reversion**: Expect price to stay near current levels
-
-### Zero Exponent (0.0)
-
-**Uniform distribution - equal liquidity at every price.**
+**More liquidity near the spread, less at range edges.**
 
 ```
 Density
   │
-  ████████████████████████
-  ████████████████████████
-  ████████████████████████
-  ████████████████████████
-  ──────────────────────────► Price
-  Spot                    Upper
+  ████                              ████
+  ██████                          ██████
+  ████████                      ████████
+  ██████████                  ██████████
+  ────────────────────────────────────────► Price
+       BID        spread        ASK
 ```
 
 **Use cases:**
-- **Simple limit orders**: Traditional orderbook behavior
-- **Uncertainty**: No strong view on where price will go
-- **Baseline comparison**: Default behavior to compare against
+- **Tight quoting**: Maximize fills near current price
+- **High-frequency MM**: Capture small moves efficiently
+- **Mean reversion**: Expect price to stay near mid
 
-### Positive Exponent (e.g., +2.0)
+### Zero Gamma (0.0)
 
-**Less liquidity near spot, more at the edges.**
+**Uniform distribution - equal liquidity across your entire range.**
 
 ```
 Density
   │
-                    █████
-              ██████████
-        ███████████████
-  ████████████████████
-  ──────────────────────────► Price
-  Spot                    Upper
+  ██████████                  ██████████
+  ██████████                  ██████████
+  ██████████                  ██████████
+  ██████████                  ██████████
+  ────────────────────────────────────────► Price
+       BID        spread        ASK
 ```
 
 **Use cases:**
-- **Aggressive DCA**: Buy small amounts early, load up if price drops significantly
-- **Breakout trading**: Capture large moves while minimizing exposure to chop
-- **Tail risk**: Position for extreme scenarios
+- **Baseline strategy**: Simple, predictable behavior
+- **Uncertain markets**: No strong view on volatility
+- **Testing**: Compare other strategies against this
+
+### Positive Gamma (e.g., +2.0)
+
+**Less liquidity near spread, more at range edges.**
+
+```
+Density
+  │
+  ██████████                  ██████████
+  ████████                      ████████
+  ██████                          ██████
+  ████                              ████
+  ────────────────────────────────────────► Price
+       BID        spread        ASK
+```
+
+**Use cases:**
+- **Volatile markets**: Capture big moves, avoid chop
+- **Tail risk capture**: Position for extreme scenarios
+- **Wider spreads**: Compensate with edge liquidity
 
 ---
 
-## How Curve Shift Adjusts Your Distribution
+## How Skew Manages Inventory
 
-The curve shift parameter moves the entire distribution horizontally within your price range, without changing its shape. This lets you fine-tune where your liquidity is concentrated.
+Skew adjusts **both gamma and depth asymmetrically** between your bid and ask sides. This is how you manage inventory risk.
 
-### Negative Shift (e.g., -0.5)
+### Negative Skew (e.g., -0.5) — You're Long
 
-**Shifts liquidity towards the spot price (left).**
+When you're holding too much inventory, you want to **sell more aggressively**:
 
-```
-Density
-  │
-  ████████
-  ██████████████
-  ██████████████████
-  ████████████████████
-  ──────────────────────────► Price
-  Spot                    Upper
-  ← shifted
-```
-
-**Use cases:**
-- **Front-load execution**: Get more of your order filled at prices closer to current
-- **Cautious entry**: Concentrate buying near current price in case reversal happens quickly
-
-### Zero Shift (0.0)
-
-**No horizontal adjustment - curve is centered as defined by the exponent.**
-
-### Positive Shift (e.g., +0.5)
-
-**Shifts liquidity away from spot price (right).**
+| Side | Gamma | Depth | Effect |
+|------|-------|-------|--------|
+| Ask | Higher | Higher | Steeper curve, more size → fills faster |
+| Bid | Lower | Lower | Flatter curve, less size → fills slower |
 
 ```
 Density
   │
-              ████████
-        ██████████████
-    ██████████████████
-  ████████████████████
-  ──────────────────────────► Price
-  Spot                    Upper
-                shifted →
+  ████                              ████████████
+  ██████                          ██████████████
+  ████████                      ████████████████
+  ██████████                  ██████████████████
+  ────────────────────────────────────────────────► Price
+       BID (passive)    spread    ASK (aggressive)
 ```
 
-**Use cases:**
-- **Delayed execution**: Wait for larger price moves before significant fills
-- **Conviction trades**: Only want meaningful fills if price moves substantially in your direction
+### Positive Skew (e.g., +0.5) — You're Short
+
+When you need to buy inventory, you want to **bid more aggressively**:
+
+| Side | Gamma | Depth | Effect |
+|------|-------|-------|--------|
+| Bid | Higher | Higher | Steeper curve, more size → fills faster |
+| Ask | Lower | Lower | Flatter curve, less size → fills slower |
+
+```
+Density
+  │
+  ████████████                              ████
+  ██████████████                          ██████
+  ████████████████                      ████████
+  ██████████████████                  ██████████
+  ────────────────────────────────────────────────► Price
+       BID (aggressive)    spread    ASK (passive)
+```
+
+### The Skew Formula
+
+```
+askGamma = baseGamma × (1 - skew)
+bidGamma = baseGamma × (1 + skew)
+
+askDepth = baseDepth × (1 - skew)
+bidDepth = baseDepth × (1 + skew)
+```
 
 ---
 
 ## Real-World Examples
 
-### Example 1: Graduated Buy Order
+### Example 1: Neutral Market Maker
 
-*"I want to accumulate SOL, buying more aggressively as the price drops."*
-
-**Settings:**
-- Exponent: **+1.5** (more liquidity at lower prices)
-- Start Price: **0%** (start buying immediately below spot)
-- End Price: **100%** (full range to your lower bound)
-
-**Result:** You'll buy a little SOL if it dips 5%, moderate amounts at 10-15% down, and the bulk of your order fills if it drops 20%+.
-
-### Example 2: Tight Range Market Making
-
-*"I want to provide liquidity in a narrow band around the current price."*
+*"I want symmetric quotes with moderate concentration near spread."*
 
 **Settings:**
-- Exponent: **-1.0** (concentrate near current price)
-- Start Price: **40%** (start 40% into your range)
-- End Price: **60%** (end 60% into your range)
+- Spread: **30 bps**
+- Range: **5%**
+- Gamma: **-1.0** (front-loaded)
+- Skew: **0** (neutral)
 
-**Result:** Your liquidity is concentrated in the middle 20% of your total range, maximizing fee capture where most trades occur.
+**Result:** Equal bid/ask curves, both concentrated near the spread. Classic two-sided MM.
 
-### Example 3: Breakout Seller
+### Example 2: Inventory Rebalancing
 
-*"I want to sell into strength, selling more as price rises further."*
-
-**Settings:**
-- Exponent: **+2.0** (more liquidity at extreme prices)
-- Start Price: **0%** (start selling just above spot)
-- End Price: **100%** (sell through entire upper range)
-
-**Result:** Small sells on initial price increases, but if price really pumps, you're selling significant size into the euphoria.
-
-### Example 4: Traditional Limit Order
-
-*"I just want to buy at exactly $145, like a normal limit order."*
+*"I'm long 500 SOL and need to reduce exposure."*
 
 **Settings:**
-- Exponent: **0** (doesn't matter for point orders)
-- Start Price: **50%** (your target price)
-- End Price: **50%** (same as start = single price point)
+- Spread: **25 bps**
+- Range: **8%**
+- Gamma: **1.5**
+- Skew: **-0.4** (long, want to sell)
 
-**Result:** The curve collapses to a vertical line - all liquidity at one price, just like a traditional limit order.
+**Result:** Ask side has 40% more depth and steeper gamma. You'll sell faster while still maintaining a bid.
 
----
+### Example 3: Volatile Market
 
-## The Math Behind the Curve
+*"High volatility expected, want to capture big moves."*
 
-For the mathematically curious, density curves follow a power-law formula with optional shift:
+**Settings:**
+- Spread: **100 bps** (wider for safety)
+- Range: **15%** (extended range)
+- Gamma: **+2.0** (back-loaded)
+- Skew: **0** (neutral)
 
-```
-d(t) = k · (t - s)^(2^|n|)
+**Result:** Most liquidity at range edges. Small fills on normal moves, big fills on breakouts.
 
-Where:
-  t = normalized position in range [0, 1]
-  n = exponent from the slider
-  s = curve shift (-1 to 1), shifts the distribution horizontally
-  k = normalization constant (ensures total = 1)
-```
+### Example 4: Tight Scalping
 
-### How Exponent Transforms the Curve
+*"Low volatility, want to capture every tick."*
 
-| Exponent | Power | Behavior |
-|----------|-------|----------|
-| -3.0 | t^8 inverted | Extremely front-loaded |
-| -2.0 | t^4 inverted | Heavily front-loaded |
-| -1.0 | t^2 inverted | Moderately front-loaded |
-| 0.0 | flat | Uniform distribution |
-| +1.0 | t^2 | Moderately back-loaded |
-| +2.0 | t^4 | Heavily back-loaded |
-| +3.0 | t^8 | Extremely back-loaded |
+**Settings:**
+- Spread: **10 bps** (tight)
+- Range: **2%** (narrow)
+- Gamma: **-2.0** (heavily front-loaded)
+- Skew: **0** (neutral)
 
-The curve smoothly blends toward uniform (flat) as the exponent approaches zero.
-
----
-
-## Tips for Effective Curve Design
-
-<CardGroup cols={2}>
-  <Card title="Start with Your Thesis" icon="lightbulb">
-    What's your market view? Mean reversion → negative exponent. Trend following → positive exponent. Uncertain → zero.
-  </Card>
-  <Card title="Watch the Average Line" icon="chart-line">
-    The gray dotted line shows your expected average fill price. Make sure it matches your expectations.
-  </Card>
-  <Card title="Narrower = More Concentrated" icon="compress">
-    Reducing the range (Start/End closer together) concentrates your liquidity, similar to increasing exponent magnitude.
-  </Card>
-  <Card title="Combine with Range" icon="sliders">
-    Use both exponent AND range to fine-tune. A moderate exponent with a narrow range can achieve similar results to an extreme exponent with a wide range.
-  </Card>
-</CardGroup>
+**Result:** Almost all liquidity right at the spread. Maximum fill rate in quiet markets.
 
 ---
 
 ## From Playground to Code
 
-Once you've found a curve shape you like, translate it to code:
+### High-Level SDK (MM-Friendly)
 
-<Tabs>
-  <Tab title="TypeScript">
 ```typescript
-// Example: Graduated buy with positive exponent
-const ix = await market.placeLimitOrder({
-  side: 'bid',
-  pMin: 130_000_000n,    // Lower bound: $130
-  pMax: 150_000_000n,    // Upper bound: $150 (spot)
-  amount: 5000_000_000n, // 5000 USDC to deploy
-  exponent: 1.5,         // More liquidity at lower prices
-  curveShift: 0.0,       // No horizontal shift
-  owner: wallet,
+// The SDK computes per-side parameters from your MM inputs
+const orders = await market.placeMMOrders({
+  midPrice: 150_000_000n,     // $150 reference
+  spreadBps: 30,              // 30 bps each side
+  rangeWidth: 0.05,           // 5% range beyond spread
+  gamma: 1.5,                 // Base curve shape
+  skew: -0.3,                 // Long, want to sell
+  maxBase: 10_000_000_000n,   // 10 SOL total
+  maxQuote: 1_500_000_000n,   // 1500 USDC total
 });
 
-// Example: Tight range LP with negative exponent and shift
-const clmmIx = await market.placeClmmPosition({
-  pMin: 145_000_000n,    // $145
-  pMax: 155_000_000n,    // $155
-  maxBase: 10_000_000_000n,
-  maxQuote: 1_500_000_000n,
-  exponent: -1.0,        // Concentrate near middle of range
-  curveShift: -0.2,      // Shift distribution slightly toward lower prices
-  owner: wallet,
+// This creates TWO orders:
+// BID: gamma=1.95, depth=130% of base
+// ASK: gamma=1.05, depth=70% of base
+```
+
+### Low-Level SDK (Direct Control)
+
+```typescript
+// Or place orders directly with raw parameters
+const bidOrder = await market.placeClmmPosition({
+  pMin: 142_500_000n,         // $142.50
+  pMax: 149_550_000n,         // $149.55 (spread edge)
+  exponent: 1950,             // 1.95 (scaled by 1000)
+  curveShift: 0,
+  maxBase: 13_000_000_000n,   // 13 SOL (130% of 10)
+  maxQuote: 0n,
+  side: 0,                    // Bid
+});
+
+const askOrder = await market.placeClmmPosition({
+  pMin: 150_450_000n,         // $150.45 (spread edge)
+  pMax: 157_500_000n,         // $157.50
+  exponent: 1050,             // 1.05 (scaled by 1000)
+  curveShift: 0,
+  maxBase: 7_000_000_000n,    // 7 SOL (70% of 10)
+  maxQuote: 0n,
+  side: 1,                    // Ask
 });
 ```
-  </Tab>
-  <Tab title="Rust">
-```rust
-// Example: Graduated buy with positive exponent
-let ix = market.place_limit_order(PlaceLimitOrderParams {
-    side: Side::Bid,
-    p_min: 130_000_000,    // $130
-    p_max: 150_000_000,    // $150
-    amount: 5_000_000_000, // 5000 USDC
-    exponent: 15,          // 1.5 (scaled by 10)
-    curve_shift: 0,        // No horizontal shift (scaled by 100)
-})?;
-```
-  </Tab>
-</Tabs>
 
 <Note>
-**Parameter scaling**: In the SDK, parameters may be scaled integers. For example, exponent 1.5 → 15 (scaled by 10), and curveShift -0.2 → -20 (scaled by 100). Check the SDK documentation for your specific version's conventions.
+**Parameter scaling**: On-chain, exponent and curveShift are i32 scaled by 1000. So gamma 1.5 → 1500, curveShift -0.2 → -200.
 </Note>
+
+---
+
+## Parameter Reference
+
+| Parameter | On-Chain Type | Scale | Range | Description |
+|-----------|---------------|-------|-------|-------------|
+| `exponent` | `i32` | ×1000 | -5000 to +5000 | Gamma/curve shape |
+| `curve_shift` | `i32` | ×1000 | -1000 to +1000 | Horizontal shift within range |
+| `p_min` | `u64` | Native | - | Lower price bound |
+| `p_max` | `u64` | Native | - | Upper price bound |
+| `amount` | `u64` | Native | - | Liquidity amount |
+
+---
+
+## Tips for Market Makers
+
+<CardGroup cols={2}>
+  <Card title="Start Neutral" icon="scale-balanced">
+    Begin with skew=0 and adjust based on inventory. Don't over-correct.
+  </Card>
+  <Card title="Widen in Volatility" icon="chart-line">
+    Increase spread and range when volatility spikes. Protect against adverse selection.
+  </Card>
+  <Card title="Match Gamma to Vol" icon="sliders">
+    Low vol → negative gamma (front-load). High vol → positive gamma (back-load).
+  </Card>
+  <Card title="Watch the Computed Values" icon="calculator">
+    The panel below the chart shows your actual per-side gamma and depth. Verify before submitting.
+  </Card>
+</CardGroup>
 
 ---
 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Order Types" icon="list" href="/concepts/order-types">
-    Learn which order type (Limit, CLMM, PropAMM) is best for your strategy
+  <Card title="CLMM Orders" icon="water" href="/orders/clmm-orders">
+    Deep dive into concentrated liquidity positions
   </Card>
-  <Card title="Place Your First Order" icon="rocket" href="/quickstart">
-    Put your curve design into practice with the quickstart guide
+  <Card title="Order Types" icon="list" href="/concepts/order-types">
+    Compare Limit, CLMM, and PropAMM for your strategy
   </Card>
 </CardGroup>

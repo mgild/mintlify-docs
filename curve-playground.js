@@ -1,4 +1,4 @@
-// Curve Playground interactive chart
+// Curve Playground interactive chart - MM-friendly parameters
 (function() {
   function init() {
     const container = document.getElementById('curve-playground');
@@ -8,60 +8,67 @@
     container.innerHTML = `
       <div style="margin-top: 20px;">
         <div style="display: flex; gap: 20px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
-          <div style="flex: 1; min-width: 150px;">
-            <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Exponent: <span id="pg-exp-val">1.00</span></label>
-            <input type="range" id="pg-exponent" min="-50" max="50" value="10" style="width: 100%;">
+          <div style="flex: 1; min-width: 140px;">
+            <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Spread: <span id="pg-spread-val">50</span> bps</label>
+            <input type="range" id="pg-spread" min="5" max="500" value="50" style="width: 100%;">
           </div>
-          <div style="flex: 1; min-width: 150px;">
-            <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Curve Shift: <span id="pg-shift-val">0.00</span></label>
-            <input type="range" id="pg-curve-shift" min="-100" max="100" value="0" style="width: 100%;">
+          <div style="flex: 1; min-width: 140px;">
+            <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Range: <span id="pg-range-val">5.0</span>%</label>
+            <input type="range" id="pg-range" min="10" max="200" value="50" style="width: 100%;">
           </div>
-          <div style="flex: 1; min-width: 150px;">
-            <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Start Price: <span id="pg-start-val">0%</span></label>
-            <input type="range" id="pg-start-price" min="0" max="100" value="0" style="width: 100%;">
+          <div style="flex: 1; min-width: 140px;">
+            <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Gamma: <span id="pg-gamma-val">1.50</span></label>
+            <input type="range" id="pg-gamma" min="-50" max="50" value="15" style="width: 100%;">
           </div>
-          <div style="flex: 1; min-width: 150px;">
-            <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">End Price: <span id="pg-end-val">100%</span></label>
-            <input type="range" id="pg-end-price" min="0" max="100" value="100" style="width: 100%;">
+          <div style="flex: 1; min-width: 140px;">
+            <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Skew: <span id="pg-skew-val">0.00</span></label>
+            <input type="range" id="pg-skew" min="-100" max="100" value="0" style="width: 100%;">
           </div>
         </div>
         <canvas id="pg-canvas" width="800" height="400" style="background: #111; border-radius: 8px; width: 100%; max-width: 800px;"></canvas>
         <div style="display: flex; justify-content: space-between; max-width: 800px; margin-top: 10px; color: #666; font-size: 12px;">
-          <span style="color: #fff;">Spot Price</span>
-          <span>Upper Price</span>
+          <span>Bid Range</span>
+          <span style="color: #fff;">Mid Price</span>
+          <span>Ask Range</span>
         </div>
+        <div id="pg-params" style="display: flex; justify-content: space-between; max-width: 800px; margin-top: 15px; font-family: monospace; font-size: 11px;"></div>
       </div>
     `;
 
     const canvas = document.getElementById('pg-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const expSlider = document.getElementById('pg-exponent');
-    const shiftSlider = document.getElementById('pg-curve-shift');
-    const startSlider = document.getElementById('pg-start-price');
-    const endSlider = document.getElementById('pg-end-price');
+    const spreadSlider = document.getElementById('pg-spread');
+    const rangeSlider = document.getElementById('pg-range');
+    const gammaSlider = document.getElementById('pg-gamma');
+    const skewSlider = document.getElementById('pg-skew');
+    const paramsDiv = document.getElementById('pg-params');
 
     function drawChart() {
-      const exp = parseInt(expSlider.value) / 10;
-      const shift = parseInt(shiftSlider.value) / 100;
-      let startPct = parseInt(startSlider.value) / 100;
-      let endPct = parseInt(endSlider.value) / 100;
+      const spreadBps = parseInt(spreadSlider.value);
+      const rangePct = parseInt(rangeSlider.value) / 10;
+      const gamma = parseInt(gammaSlider.value) / 10;
+      const skew = parseInt(skewSlider.value) / 100;
 
-      // If end goes below start, push start down
-      if (endPct < startPct) {
-        startPct = endPct;
-        startSlider.value = Math.round(startPct * 100);
-      }
+      // Update labels
+      document.getElementById('pg-spread-val').textContent = spreadBps;
+      document.getElementById('pg-range-val').textContent = rangePct.toFixed(1);
+      document.getElementById('pg-gamma-val').textContent = gamma.toFixed(2);
+      document.getElementById('pg-skew-val').textContent = skew.toFixed(2);
 
-      document.getElementById('pg-exp-val').textContent = exp.toFixed(2);
-      document.getElementById('pg-shift-val').textContent = shift.toFixed(2);
-      document.getElementById('pg-start-val').textContent = `${Math.round(startPct * 100)}%`;
-      document.getElementById('pg-end-val').textContent = `${Math.round(endPct * 100)}%`;
+      // Calculate per-side parameters based on skew
+      // Negative skew = long, want to sell = more aggressive ask
+      const askGamma = gamma * (1 - skew);
+      const bidGamma = gamma * (1 + skew);
+      const askDepthMult = 1 - skew;
+      const bidDepthMult = 1 + skew;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      const midX = canvas.width / 2;
+
       // Grid
-      ctx.strokeStyle = '#333';
+      ctx.strokeStyle = '#222';
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let i = 0; i <= 16; i++) {
@@ -74,147 +81,188 @@
       }
       ctx.stroke();
 
-      // Spot price line (far left)
+      // Mid price line (center)
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2;
       ctx.setLineDash([8, 8]);
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(0, 400);
+      ctx.moveTo(midX, 0);
+      ctx.lineTo(midX, 400);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Calculate Y value based on position, exponent, and shift
-      // normalizedX goes from 0 (near spot) to 1 (far from spot)
-      // shift moves the curve's center point (-1 to 1)
-      function calcY(normalizedX, e, s) {
-        // Apply shift by transforming the x coordinate
-        // Shift moves the "center" of the curve
-        let shiftedX = normalizedX - s;
-        // Clamp to valid range
-        shiftedX = Math.max(0, Math.min(1, shiftedX));
-
-        const power = Math.pow(2, Math.abs(e));
-        const curved = Math.pow(shiftedX, power);
-
-        // Blend towards flat (0.5) as exp approaches 0
-        const blend = 1 - Math.exp(-Math.abs(e) * 3);
-
-        if (e >= 0) {
-          // Positive exp: more density far from spot
-          return 0.5 * (1 - blend) + curved * blend;
-        } else {
-          // Negative exp: more density near spot
-          return 0.5 * (1 - blend) + (1 - curved) * blend;
-        }
-      }
-
-      // Calculate average price (weighted average based on curve)
-      function calcAverageX(e, s) {
-        // Numerical integration for weighted average
-        const steps = 100;
-        let totalWeight = 0;
-        let weightedSum = 0;
-
-        for (let i = 0; i <= steps; i++) {
-          const t = i / steps;
-          const y = calcY(t, e, s);
-          totalWeight += y;
-          weightedSum += t * y;
-        }
-
-        return totalWeight > 0 ? weightedSum / totalWeight : 0.5;
-      }
-
       // Calculate pixel positions
-      // Start% and End% define the range from spot price (0% = at spot, 100% = at right edge)
-      const curveStart = canvas.width * startPct;  // Near spot
-      const curveEnd = canvas.width * endPct;      // Far from spot
+      // Spread defines the gap from mid to where each curve starts
+      // Range defines how wide each curve extends beyond the spread
+      const spreadPx = (spreadBps / 10000) * midX * 4; // Scale for visibility
+      const rangePx = (rangePct / 100) * midX * 2;
 
-      const rangeWidth = curveEnd - curveStart;
-      const isVerticalLine = rangeWidth < 1; // When start = end
+      // Bid curve: from (mid - spread - range) to (mid - spread)
+      const bidStart = midX - spreadPx - rangePx;
+      const bidEnd = midX - spreadPx;
 
-      ctx.fillStyle = 'rgba(93, 139, 187, 0.2)';
-      ctx.strokeStyle = 'rgba(93, 139, 187, 0.8)';
-      ctx.lineWidth = 3;
+      // Ask curve: from (mid + spread) to (mid + spread + range)
+      const askStart = midX + spreadPx;
+      const askEnd = midX + spreadPx + rangePx;
 
-      if (isVerticalLine) {
-        // Draw vertical line when start = end
-        ctx.beginPath();
-        ctx.moveTo(curveStart, 0);
-        ctx.lineTo(curveStart, 400);
-        ctx.stroke();
-      } else {
-        // Find first x where density > 0 (threshold to avoid floating point issues)
-        const threshold = 0.001;
-        let firstPositiveX = curveStart;
-        for (let x = curveStart; x <= curveEnd; x++) {
-          const normalizedX = (x - curveStart) / rangeWidth;
-          const y = calcY(normalizedX, exp, shift);
-          if (y > threshold) {
-            firstPositiveX = x;
-            break;
-          }
+      // Draw spread zone (gray area in middle)
+      ctx.fillStyle = 'rgba(50, 50, 50, 0.3)';
+      ctx.fillRect(bidEnd, 0, askStart - bidEnd, 400);
+
+      // Calculate raw curve shape (not normalized)
+      // Returns unnormalized density value for a given position
+      function calcRawY(normalizedX, g) {
+        if (Math.abs(g) < 0.01) return 1.0; // Uniform
+
+        const power = Math.pow(2, Math.abs(g));
+        const curved = Math.pow(normalizedX, power);
+
+        // Blend towards flat as gamma approaches 0
+        const blend = 1 - Math.exp(-Math.abs(g) * 3);
+
+        if (g >= 0) {
+          // Positive gamma: more density at edges (away from spread)
+          return (1 - blend) + curved * blend;
+        } else {
+          // Negative gamma: more density near spread
+          return (1 - blend) + (1 - curved) * blend;
         }
+      }
 
-        // Fill curve - only where density > 0
-        ctx.beginPath();
-        ctx.moveTo(firstPositiveX, 400);
-        for (let x = firstPositiveX; x <= curveEnd; x++) {
-          const normalizedX = (x - curveStart) / rangeWidth;
-          const y = calcY(normalizedX, exp, shift);
-          if (y > threshold) {
-            ctx.lineTo(x, 400 - y * 370);
-          }
+      // Calculate normalization factor so area under curve is constant
+      // This ensures total liquidity (depth) stays the same regardless of gamma
+      function calcNormFactor(g) {
+        const steps = 100;
+        let sum = 0;
+        for (let i = 0; i <= steps; i++) {
+          sum += calcRawY(i / steps, g);
         }
-        ctx.lineTo(curveEnd, 400);
+        return steps / sum; // Normalize so average height = 1
+      }
+
+      // Normalized Y value - area under curve stays constant, only shape changes
+      function calcY(normalizedX, g, depthMult, normFactor) {
+        const raw = calcRawY(normalizedX, g);
+        return raw * normFactor * 0.5 * depthMult;
+      }
+
+      // Pre-calculate normalization factors for bid and ask
+      const bidNormFactor = calcNormFactor(bidGamma);
+      const askNormFactor = calcNormFactor(askGamma);
+
+      // Draw bid curve (left side, green tint)
+      if (bidEnd > bidStart) {
+        const bidWidth = bidEnd - bidStart;
+
+        ctx.fillStyle = `rgba(34, 197, 94, ${0.15 * bidDepthMult})`;
+        ctx.strokeStyle = `rgba(34, 197, 94, ${0.6 + 0.4 * bidDepthMult})`;
+        ctx.lineWidth = 3;
+
+        // Fill
+        ctx.beginPath();
+        ctx.moveTo(bidStart, 400);
+        for (let x = bidStart; x <= bidEnd; x++) {
+          const normalizedX = (bidEnd - x) / bidWidth; // 0 at edge (mid), 1 at far end
+          const y = calcY(normalizedX, bidGamma, bidDepthMult, bidNormFactor);
+          ctx.lineTo(x, 400 - y * 350);
+        }
+        ctx.lineTo(bidEnd, 400);
         ctx.closePath();
         ctx.fill();
 
-        // Stroke curve - only where density > 0
+        // Stroke
         ctx.beginPath();
-        let started = false;
-        for (let x = firstPositiveX; x <= curveEnd; x++) {
-          const normalizedX = (x - curveStart) / rangeWidth;
-          const y = calcY(normalizedX, exp, shift);
-          if (y > threshold) {
-            if (!started) {
-              ctx.moveTo(x, 400 - y * 370);
-              started = true;
-            } else {
-              ctx.lineTo(x, 400 - y * 370);
-            }
+        for (let x = bidStart; x <= bidEnd; x++) {
+          const normalizedX = (bidEnd - x) / bidWidth;
+          const y = calcY(normalizedX, bidGamma, bidDepthMult, bidNormFactor);
+          if (x === bidStart) {
+            ctx.moveTo(x, 400 - y * 350);
+          } else {
+            ctx.lineTo(x, 400 - y * 350);
           }
         }
         ctx.stroke();
       }
 
-      // Draw average price line (gray dotted) - skip if vertical line
-      if (!isVerticalLine) {
-        ctx.strokeStyle = '#888';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 4]);
+      // Draw ask curve (right side, red tint)
+      if (askEnd > askStart) {
+        const askWidth = askEnd - askStart;
 
-        const avgNorm = calcAverageX(exp, shift);
-        const avgX = curveStart + avgNorm * rangeWidth;
+        ctx.fillStyle = `rgba(239, 68, 68, ${0.15 * askDepthMult})`;
+        ctx.strokeStyle = `rgba(239, 68, 68, ${0.6 + 0.4 * askDepthMult})`;
+        ctx.lineWidth = 3;
+
+        // Fill
         ctx.beginPath();
-        ctx.moveTo(avgX, 20);
-        ctx.lineTo(avgX, 400);
+        ctx.moveTo(askStart, 400);
+        for (let x = askStart; x <= askEnd; x++) {
+          const normalizedX = (x - askStart) / askWidth; // 0 at edge (mid), 1 at far end
+          const y = calcY(normalizedX, askGamma, askDepthMult, askNormFactor);
+          ctx.lineTo(x, 400 - y * 350);
+        }
+        ctx.lineTo(askEnd, 400);
+        ctx.closePath();
+        ctx.fill();
+
+        // Stroke
+        ctx.beginPath();
+        for (let x = askStart; x <= askEnd; x++) {
+          const normalizedX = (x - askStart) / askWidth;
+          const y = calcY(normalizedX, askGamma, askDepthMult, askNormFactor);
+          if (x === askStart) {
+            ctx.moveTo(x, 400 - y * 350);
+          } else {
+            ctx.lineTo(x, 400 - y * 350);
+          }
+        }
         ctx.stroke();
-
-        ctx.setLineDash([]);
-
-        // Label
-        ctx.fillStyle = '#888';
-        ctx.font = '11px monospace';
-        ctx.fillText('avg', avgX - 10, 15);
       }
+
+      // Draw spread boundaries
+      ctx.strokeStyle = '#666';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(bidEnd, 0);
+      ctx.lineTo(bidEnd, 400);
+      ctx.moveTo(askStart, 0);
+      ctx.lineTo(askStart, 400);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Labels
+      ctx.font = '11px monospace';
+      ctx.fillStyle = '#22c55e';
+      ctx.fillText('BID', bidStart + 5, 20);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillText('ASK', askEnd - 30, 20);
+      ctx.fillStyle = '#666';
+      ctx.fillText('spread', midX - 20, 20);
+
+      // Update computed parameters display
+      paramsDiv.innerHTML = `
+        <div style="color: #22c55e; background: #111; padding: 8px 12px; border-radius: 4px; border: 1px solid #22c55e33;">
+          <div style="margin-bottom: 4px; color: #888;">Bid Order</div>
+          <div>gamma: ${bidGamma.toFixed(2)}</div>
+          <div>depth: ${(bidDepthMult * 100).toFixed(0)}%</div>
+        </div>
+        <div style="color: #888; background: #111; padding: 8px 12px; border-radius: 4px; border: 1px solid #333; text-align: center;">
+          <div style="margin-bottom: 4px;">Spread</div>
+          <div>${spreadBps} bps</div>
+          <div style="font-size: 10px; color: #666;">${(spreadBps / 100).toFixed(2)}%</div>
+        </div>
+        <div style="color: #ef4444; background: #111; padding: 8px 12px; border-radius: 4px; border: 1px solid #ef444433;">
+          <div style="margin-bottom: 4px; color: #888;">Ask Order</div>
+          <div>gamma: ${askGamma.toFixed(2)}</div>
+          <div>depth: ${(askDepthMult * 100).toFixed(0)}%</div>
+        </div>
+      `;
     }
 
-    expSlider.addEventListener('input', drawChart);
-    shiftSlider.addEventListener('input', drawChart);
-    startSlider.addEventListener('input', drawChart);
-    endSlider.addEventListener('input', drawChart);
+    spreadSlider.addEventListener('input', drawChart);
+    rangeSlider.addEventListener('input', drawChart);
+    gammaSlider.addEventListener('input', drawChart);
+    skewSlider.addEventListener('input', drawChart);
     drawChart();
   }
 
