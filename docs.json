@@ -21,7 +21,7 @@
   },
   "favicon": "/favicon.svg",
   "metadata": {
-    "og:image": "/logo/main.svg"
+    "og:image": "/logo/og-image.png"
   },
   "navigation": {
     "languages": [
