@@ -6,7 +6,7 @@
     if (container.querySelector('canvas')) return; // Already initialized
 
     container.innerHTML = `
-      <div style="margin-top: 20px;">
+      <div style="margin-top: 20px; width: 100%;">
         <div style="display: flex; gap: 20px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
           <div style="flex: 1; min-width: 140px;">
             <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Spread: <span id="pg-spread-val">50</span> bps</label>
@@ -25,14 +25,14 @@
             <input type="range" id="pg-skew" min="-100" max="100" value="0" style="width: 100%;">
           </div>
         </div>
-        <canvas id="pg-canvas" width="800" height="400" style="background: #111; border-radius: 8px; width: 100%; max-width: 800px;"></canvas>
-        <div style="display: flex; justify-content: space-between; max-width: 800px; margin-top: 10px; color: #666; font-size: 12px;">
+        <canvas id="pg-canvas" width="800" height="400" style="background: #111; border-radius: 8px; width: 100%;"></canvas>
+        <div style="display: flex; justify-content: space-between; width: 100%; margin-top: 10px; color: #666; font-size: 12px;">
           <span>Bid Range</span>
           <span style="color: #fff;">Mid Price</span>
           <span>Ask Range</span>
         </div>
-        <div id="pg-params" style="display: flex; justify-content: space-between; max-width: 800px; margin-top: 15px; font-family: monospace; font-size: 11px;"></div>
-        <div id="pg-program-params" style="width: 100%; max-width: 800px; margin-top: 20px;"></div>
+        <div id="pg-params" style="display: flex; justify-content: space-between; width: 100%; margin-top: 15px; font-family: monospace; font-size: 11px;"></div>
+        <div id="pg-program-params" style="display: block; width: 100%; margin-top: 20px; box-sizing: border-box;"></div>
       </div>
     `;
 
@@ -289,44 +289,49 @@
       const askPMax = Math.round(midPrice * (1 + spreadMult + rangeMult));
       const askExponent = Math.round(askGamma * 1000);
 
+      // Get canvas actual rendered width
+      const canvasWidth = canvas.getBoundingClientRect().width;
+
       const programParamsDiv = document.getElementById('pg-program-params');
+
+      // Use CSS Grid with divs instead of table (avoids Mintlify table styling)
+      const rowStyle = 'display: grid; grid-template-columns: 40% 30% 30%; border-bottom: 1px solid #2a2a2a;';
+      const cellStyle = 'padding: 8px 10px;';
+      const rightCellStyle = 'padding: 8px 10px; text-align: right;';
+
       programParamsDiv.innerHTML = `
-        <table style="width: 100%; table-layout: fixed; border-collapse: collapse; font-family: monospace; font-size: 12px; background: #1a1a1a; border-radius: 8px; overflow: hidden;">
-          <thead>
-            <tr style="background: #252525; color: #888;">
-              <th style="width: 40%; padding: 10px; text-align: left; border-bottom: 1px solid #333;">Parameter</th>
-              <th style="width: 30%; padding: 10px; text-align: right; border-bottom: 1px solid #333; color: #22c55e;">Bid Order</th>
-              <th style="width: 30%; padding: 10px; text-align: right; border-bottom: 1px solid #333; color: #ef4444;">Ask Order</th>
-            </tr>
-          </thead>
-          <tbody style="color: #ccc;">
-            <tr>
-              <td style="padding: 8px 10px; border-bottom: 1px solid #2a2a2a;">p_min</td>
-              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">${bidPMin.toLocaleString()}</td>
-              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">${askPMin.toLocaleString()}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 10px; border-bottom: 1px solid #2a2a2a;">p_max</td>
-              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">${bidPMax.toLocaleString()}</td>
-              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">${askPMax.toLocaleString()}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 10px; border-bottom: 1px solid #2a2a2a;">exponent <span style="color: #666;">(×1000)</span></td>
-              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">${bidExponent}</td>
-              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">${askExponent}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 10px; border-bottom: 1px solid #2a2a2a;">curve_shift <span style="color: #666;">(×1000)</span></td>
-              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">0</td>
-              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">0</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 10px;">amount <span style="color: #666;">(multiplier)</span></td>
-              <td style="padding: 8px 10px; text-align: right;">${bidDepthMult.toFixed(2)}×</td>
-              <td style="padding: 8px 10px; text-align: right;">${askDepthMult.toFixed(2)}×</td>
-            </tr>
-          </tbody>
-        </table>
+        <div style="font-family: monospace; font-size: 12px; background: #1a1a1a; border-radius: 8px; overflow: hidden;">
+          <div style="${rowStyle} background: #252525; color: #888; border-bottom: 1px solid #333;">
+            <div style="${cellStyle}">Parameter</div>
+            <div style="${rightCellStyle} color: #22c55e;">Bid Order</div>
+            <div style="${rightCellStyle} color: #ef4444;">Ask Order</div>
+          </div>
+          <div style="${rowStyle} color: #ccc;">
+            <div style="${cellStyle}">p_min</div>
+            <div style="${rightCellStyle}">${bidPMin.toLocaleString()}</div>
+            <div style="${rightCellStyle}">${askPMin.toLocaleString()}</div>
+          </div>
+          <div style="${rowStyle} color: #ccc;">
+            <div style="${cellStyle}">p_max</div>
+            <div style="${rightCellStyle}">${bidPMax.toLocaleString()}</div>
+            <div style="${rightCellStyle}">${askPMax.toLocaleString()}</div>
+          </div>
+          <div style="${rowStyle} color: #ccc;">
+            <div style="${cellStyle}">exponent <span style="color: #666;">(×1000)</span></div>
+            <div style="${rightCellStyle}">${bidExponent}</div>
+            <div style="${rightCellStyle}">${askExponent}</div>
+          </div>
+          <div style="${rowStyle} color: #ccc;">
+            <div style="${cellStyle}">curve_shift <span style="color: #666;">(×1000)</span></div>
+            <div style="${rightCellStyle}">0</div>
+            <div style="${rightCellStyle}">0</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 40% 30% 30%; color: #ccc;">
+            <div style="${cellStyle}">amount <span style="color: #666;">(multiplier)</span></div>
+            <div style="${rightCellStyle}">${bidDepthMult.toFixed(2)}×</div>
+            <div style="${rightCellStyle}">${askDepthMult.toFixed(2)}×</div>
+          </div>
+        </div>
         <div style="margin-top: 8px; font-size: 11px; color: #666; font-family: monospace;">
           Reference: mid_price = ${midPrice.toLocaleString()} ($100.00)
         </div>
