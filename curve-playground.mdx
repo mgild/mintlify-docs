@@ -5,149 +5,139 @@ description: 'Interactive market maker curve visualizer - design your bid/ask li
 
 # Market Maker Curve Playground
 
-This interactive playground lets you design **two-sided liquidity curves** using market maker parameters. See how spread, gamma, and skew affect your bid and ask distributions in real-time.
+This interactive playground lets you design **two-sided liquidity curves** using the parameters market makers actually think about. See how spread, range, gamma, and skew affect your bid and ask distributions in real-time.
 
 <div id="curve-playground"></div>
 
 ---
 
-## Understanding the Visualization
+## How Market Makers Think
 
-### What You're Looking At
+Before diving into the controls, let's understand the core problem market makers solve: **providing liquidity profitably while managing risk**.
 
-The chart shows your **bid and ask liquidity** distributed around a central mid price:
+A market maker continuously quotes both a **bid** (price to buy) and an **ask** (price to sell). The goal is to:
+1. Capture the spread between bid and ask as profit
+2. Avoid holding too much inventory in either direction
+3. Not get "picked off" by informed traders who know price is about to move
 
-| Element | Meaning |
-|---------|---------|
-| **White dashed line** (center) | Mid price - the reference point for your quotes |
-| **Green curve** (left) | Bid orders - where you're buying |
-| **Red curve** (right) | Ask orders - where you're selling |
-| **Gray zone** (center) | Spread - the gap between your bid and ask |
-| **Y-axis** | Relative liquidity density at each price |
-
-### The Controls
-
-| Control | Range | What It Does |
-|---------|-------|--------------|
-| **Spread** | 5-500 bps | Distance from mid price to your quotes. Wider = safer but less competitive. |
-| **Range** | 1-50% | How far your liquidity extends beyond the spread. Wider = more price coverage. |
-| **Gamma** | -5 to +5 | Curve shape. Negative = front-loaded (near spread), Positive = back-loaded (at edges), Zero = uniform. |
-| **Skew** | -1 to +1 | Inventory adjustment. Negative = long (aggressive asks), Positive = short (aggressive bids). |
+Every parameter in this playground addresses one of these concerns.
 
 ---
 
-## How Gamma Shapes Your Curves
+## The Five Parameters
 
-Gamma (also called exponent) controls **where your liquidity concentrates** within your range.
+### 1. Spread — Your Profit Margin
 
-### Negative Gamma (e.g., -2.0)
+**What it is:** The gap between your best bid and best ask, measured in basis points (bps) from the mid price.
 
-**More liquidity near the spread, less at range edges.**
+**How MMs think about it:**
+- Spread is your **compensation for providing liquidity**
+- Each round-trip (buy then sell) earns you roughly the spread
+- Tighter spread = more competitive = more fills, but less profit per fill
+- Wider spread = less competitive = fewer fills, but more profit per fill
 
-```
-Density
-  │
-  ████                              ████
-  ██████                          ██████
-  ████████                      ████████
-  ██████████                  ██████████
-  ────────────────────────────────────────► Price
-       BID        spread        ASK
-```
+**The key tradeoff:** You want the tightest spread you can safely quote given current conditions.
 
-**Use cases:**
-- **Tight quoting**: Maximize fills near current price
-- **High-frequency MM**: Capture small moves efficiently
-- **Mean reversion**: Expect price to stay near mid
+| Condition | Spread Response |
+|-----------|-----------------|
+| Low volatility | Tighten spread (safe to be aggressive) |
+| High volatility | Widen spread (protect against adverse selection) |
+| High competition | Tighten spread (or lose flow to others) |
+| Illiquid market | Widen spread (compensation for risk) |
 
-### Zero Gamma (0.0)
+**Adverse selection** is your enemy: if informed traders know price is about to move, they'll pick off your stale quotes. Wider spreads give you a buffer.
 
-**Uniform distribution - equal liquidity across your entire range.**
-
-```
-Density
-  │
-  ██████████                  ██████████
-  ██████████                  ██████████
-  ██████████                  ██████████
-  ██████████                  ██████████
-  ────────────────────────────────────────► Price
-       BID        spread        ASK
-```
-
-**Use cases:**
-- **Baseline strategy**: Simple, predictable behavior
-- **Uncertain markets**: No strong view on volatility
-- **Testing**: Compare other strategies against this
-
-### Positive Gamma (e.g., +2.0)
-
-**Less liquidity near spread, more at range edges.**
-
-```
-Density
-  │
-  ██████████                  ██████████
-  ████████                      ████████
-  ██████                          ██████
-  ████                              ████
-  ────────────────────────────────────────► Price
-       BID        spread        ASK
-```
-
-**Use cases:**
-- **Volatile markets**: Capture big moves, avoid chop
-- **Tail risk capture**: Position for extreme scenarios
-- **Wider spreads**: Compensate with edge liquidity
+**In Braid:** Spread determines the gap from mid price to where your bid's `p_max` and ask's `p_min` begin.
 
 ---
 
-## How Skew Manages Inventory
+### 2. Range — Your Price Coverage
 
-Skew adjusts **both gamma and depth asymmetrically** between your bid and ask sides. This is how you manage inventory risk.
+**What it is:** How far your liquidity extends beyond the spread edge, as a percentage of price.
 
-### Negative Skew (e.g., -0.5) — You're Long
+**How MMs think about it:**
+- Range defines **how much price movement you can absorb** before being "out of range"
+- Wider range = more scenarios covered, but liquidity is diluted across more prices
+- Narrower range = concentrated liquidity, but you'll need to rebalance if price moves
 
-When you're holding too much inventory, you want to **sell more aggressively**:
+**The key tradeoff:** Range is tied to your **rebalancing frequency**.
 
-| Side | Gamma | Depth | Effect |
-|------|-------|-------|--------|
-| Ask | Higher | Higher | Steeper curve, more size → fills faster |
-| Bid | Lower | Lower | Flatter curve, less size → fills slower |
+| Strategy | Range | Rebalancing |
+|----------|-------|-------------|
+| High-frequency MM | 1-3% | Continuous |
+| Active MM | 5-10% | Hourly/daily |
+| Passive LP | 20-50% | Weekly/never |
 
-```
-Density
-  │
-  ████                              ████████████
-  ██████                          ██████████████
-  ████████                      ████████████████
-  ██████████                  ██████████████████
-  ────────────────────────────────────────────────► Price
-       BID (passive)    spread    ASK (aggressive)
-```
+If you set a narrow range and price moves outside it, you stop earning fees until you reposition. If you set a wide range, your liquidity is spread thin and you earn less per dollar deployed at any given price.
 
-### Positive Skew (e.g., +0.5) — You're Short
+**In Braid:** Range determines the distance from your spread edge to your bid's `p_min` and ask's `p_max`.
 
-When you need to buy inventory, you want to **bid more aggressively**:
+---
 
-| Side | Gamma | Depth | Effect |
-|------|-------|-------|--------|
-| Bid | Higher | Higher | Steeper curve, more size → fills faster |
-| Ask | Lower | Lower | Flatter curve, less size → fills slower |
+### 3. Gamma — Your Liquidity Shape
 
-```
-Density
-  │
-  ████████████                              ████
-  ██████████████                          ██████
-  ████████████████                      ████████
-  ██████████████████                  ██████████
-  ────────────────────────────────────────────────► Price
-       BID (aggressive)    spread    ASK (passive)
-```
+**What it is:** How your liquidity is distributed within your range. Also called "exponent" in the on-chain parameters.
 
-### The Skew Formula
+**How MMs think about it:**
 
+Gamma answers the question: *"Where do I want my fills to happen?"*
+
+| Gamma | Distribution | You're saying... |
+|-------|--------------|------------------|
+| **Negative** (-5 to 0) | Front-loaded (near spread) | "I want to trade frequently at current prices" |
+| **Zero** | Uniform (flat) | "I have no strong view, spread it evenly" |
+| **Positive** (0 to +5) | Back-loaded (at edges) | "I only want to trade on significant moves" |
+
+<div id="gamma-demo"></div>
+
+**When to use each:**
+
+**Negative gamma (front-loaded):**
+- Low volatility environments — price oscillates near current level
+- Mean-reversion strategies — expect price to bounce back
+- Maximizing fill rate — you want to trade frequently
+- Risk: repeated fills on wrong side if price trends
+
+**Zero gamma (uniform):**
+- Uncertain markets — no strong directional or volatility view
+- Baseline strategy — simple and predictable
+- Fair comparison — use as benchmark for other strategies
+
+**Positive gamma (back-loaded):**
+- High volatility expected — only trade on big moves
+- Trend-following mindset — let small moves pass, catch big ones
+- Protection from chop — avoid getting whipsawed
+- Risk: may miss profitable trades if price stays rangebound
+
+**In Braid:** Gamma maps to the `exponent` parameter, scaled by 1000. So gamma 1.5 becomes exponent 1500 on-chain.
+
+---
+
+### 4. Skew — Your Inventory Management
+
+**What it is:** Asymmetry between your bid and ask sides, ranging from -1 to +1.
+
+**How MMs think about it:**
+
+Skew is your primary tool for **managing inventory risk**. As you accumulate a position, you adjust skew to work back toward neutral.
+
+**The core principle:** Skew is inversely related to your inventory position.
+
+| Your Position | Skew | What Happens |
+|---------------|------|--------------|
+| **Long** (holding too much) | Negative (-) | Ask becomes more aggressive → you sell faster |
+| **Neutral** (balanced) | Zero (0) | Symmetric bid and ask |
+| **Short** (need to buy) | Positive (+) | Bid becomes more aggressive → you buy faster |
+
+**Why it works:**
+
+When you're long, you have **inventory risk** — if price drops, you lose money. You want to reduce that inventory, so you make your ask more attractive:
+- More depth on the ask side (more size available to sell)
+- Steeper gamma on the ask side (more liquidity near the spread)
+
+The opposite applies when you're short.
+
+**The formulas:**
 ```
 askGamma = baseGamma × (1 - skew)
 bidGamma = baseGamma × (1 + skew)
@@ -156,57 +146,134 @@ askDepth = baseDepth × (1 - skew)
 bidDepth = baseDepth × (1 + skew)
 ```
 
+**Example with skew = -0.4 (you're long):**
+- Ask gamma: base × 1.4 (steeper, more aggressive)
+- Ask depth: base × 1.4 (40% more size)
+- Bid gamma: base × 0.6 (flatter, more passive)
+- Bid depth: base × 0.6 (40% less size)
+
+**In Braid:** Skew is applied at the SDK level. On-chain, you submit separate bid and ask orders with their computed gamma and amount values.
+
+---
+
+### 5. Depth — Your Capital Deployment
+
+**What it is:** The total liquidity amount you're providing (shown as a multiplier in the playground).
+
+**How MMs think about it:**
+- More depth = more potential profit, but more inventory risk
+- Depth should be sized to your:
+  - **Capital**: Don't overextend
+  - **Turnover**: How quickly can you cycle inventory?
+  - **Correlation**: Does this position hedge or compound other exposures?
+
+The playground shows depth as a **multiplier** after skew is applied. With skew = -0.4:
+- Bid depth: 0.60× (60% of your base amount)
+- Ask depth: 1.40× (140% of your base amount)
+
+Your total capital deployed stays roughly constant; skew just redistributes it between sides.
+
+**In Braid:** Depth maps to the `amount` parameter for each order.
+
+---
+
+## Understanding the Visualization
+
+### What You're Looking At
+
+| Element | Meaning |
+|---------|---------|
+| **White dashed line** (center) | Mid price — your reference point |
+| **Green curve** (left of spread) | Bid orders — where you're buying |
+| **Red curve** (right of spread) | Ask orders — where you're selling |
+| **Gray zone** (center) | Spread — the gap between bid and ask |
+| **Y-axis height** | Liquidity density at each price |
+| **Area under curve** | Total depth on that side |
+
+### Key Observations
+
+1. **Area represents depth**: The total area under each curve represents how much liquidity is on that side. Skew changes the relative areas.
+
+2. **Shape represents gamma**: The curve shape shows where fills will concentrate. Front-loaded (negative gamma) means more fills near the spread.
+
+3. **Spread is dead zone**: No liquidity in the spread zone — that's your profit margin.
+
 ---
 
 ## Real-World Examples
 
 ### Example 1: Neutral Market Maker
 
-*"I want symmetric quotes with moderate concentration near spread."*
+*"I want symmetric, competitive quotes in a calm market."*
 
-**Settings:**
-- Spread: **30 bps**
-- Range: **5%**
-- Gamma: **-1.0** (front-loaded)
-- Skew: **0** (neutral)
+| Parameter | Value | Reasoning |
+|-----------|-------|-----------|
+| Spread | 30 bps | Competitive but profitable |
+| Range | 5% | Will rebalance if price moves significantly |
+| Gamma | -1.0 | Front-load to maximize fill rate |
+| Skew | 0 | No inventory position |
 
-**Result:** Equal bid/ask curves, both concentrated near the spread. Classic two-sided MM.
+**Result:** Classic two-sided MM. Symmetric curves concentrated near the spread. Optimal for low-volatility, mean-reverting markets.
+
+---
 
 ### Example 2: Inventory Rebalancing
 
-*"I'm long 500 SOL and need to reduce exposure."*
+*"I'm long 500 SOL and need to reduce exposure without panic selling."*
 
-**Settings:**
-- Spread: **25 bps**
-- Range: **8%**
-- Gamma: **1.5**
-- Skew: **-0.4** (long, want to sell)
+| Parameter | Value | Reasoning |
+|-----------|-------|-----------|
+| Spread | 25 bps | Stay competitive |
+| Range | 8% | Moderate coverage |
+| Gamma | 1.5 | Back-load slightly — not desperate |
+| Skew | -0.4 | Long, so make asks aggressive |
 
-**Result:** Ask side has 40% more depth and steeper gamma. You'll sell faster while still maintaining a bid.
+**Result:** Ask side has 40% more depth and gamma of 2.1 (vs bid's 0.9). You'll sell faster while still maintaining a bid in case price drops.
 
-### Example 3: Volatile Market
+---
 
-*"High volatility expected, want to capture big moves."*
+### Example 3: Volatility Spike
 
-**Settings:**
-- Spread: **100 bps** (wider for safety)
-- Range: **15%** (extended range)
-- Gamma: **+2.0** (back-loaded)
-- Skew: **0** (neutral)
+*"News just dropped. I expect big moves and want to avoid getting chopped up."*
 
-**Result:** Most liquidity at range edges. Small fills on normal moves, big fills on breakouts.
+| Parameter | Value | Reasoning |
+|-----------|-------|-----------|
+| Spread | 100 bps | Wide spread for protection |
+| Range | 20% | Extended range for big moves |
+| Gamma | +3.0 | Back-load heavily — only trade on real moves |
+| Skew | 0 | Stay neutral until direction is clear |
+
+**Result:** Most liquidity at range edges. You'll barely fill on small oscillations but capture significant moves.
+
+---
 
 ### Example 4: Tight Scalping
 
-*"Low volatility, want to capture every tick."*
+*"It's a quiet Sunday. Price is barely moving. I want every tick."*
 
-**Settings:**
-- Spread: **10 bps** (tight)
-- Range: **2%** (narrow)
-- Gamma: **-2.0** (heavily front-loaded)
-- Skew: **0** (neutral)
+| Parameter | Value | Reasoning |
+|-----------|-------|-----------|
+| Spread | 10 bps | Ultra-tight to win flow |
+| Range | 2% | Narrow — will reposition if needed |
+| Gamma | -2.5 | Heavily front-loaded |
+| Skew | 0 | Neutral |
 
-**Result:** Almost all liquidity right at the spread. Maximum fill rate in quiet markets.
+**Result:** Almost all liquidity crammed right at the spread edges. Maximum fill rate, but high adverse selection risk if volatility picks up.
+
+---
+
+### Example 5: Passive Yield Farming
+
+*"I just want to earn fees on my holdings without active management."*
+
+| Parameter | Value | Reasoning |
+|-----------|-------|-----------|
+| Spread | 50 bps | Comfortable margin |
+| Range | 50% | Maximum coverage |
+| Gamma | 0 | Uniform — no view |
+| Skew | 0 | Neutral |
+
+**Result:** Set-and-forget position. Wide coverage means you stay in range through most moves. Lower capital efficiency but minimal maintenance.
 
 ---
 
@@ -227,8 +294,8 @@ const orders = await market.placeMMOrders({
 });
 
 // This creates TWO orders:
-// BID: gamma=1.95, depth=130% of base
-// ASK: gamma=1.05, depth=70% of base
+// BID: gamma=1.95, depth=65% of base
+// ASK: gamma=1.05, depth=135% of base
 ```
 
 ### Low-Level SDK (Direct Control)
@@ -238,39 +305,36 @@ const orders = await market.placeMMOrders({
 const bidOrder = await market.placeClmmPosition({
   pMin: 142_500_000n,         // $142.50
   pMax: 149_550_000n,         // $149.55 (spread edge)
-  exponent: 1950,             // 1.95 (scaled by 1000)
-  curveShift: 0,
-  maxBase: 13_000_000_000n,   // 13 SOL (130% of 10)
+  exponent: 1950,             // 1.95 × 1000
+  maxBase: 6_500_000_000n,    // 6.5 SOL (65% of 10)
   maxQuote: 0n,
-  side: 0,                    // Bid
+  side: 'bid',
 });
 
 const askOrder = await market.placeClmmPosition({
   pMin: 150_450_000n,         // $150.45 (spread edge)
   pMax: 157_500_000n,         // $157.50
-  exponent: 1050,             // 1.05 (scaled by 1000)
-  curveShift: 0,
-  maxBase: 7_000_000_000n,    // 7 SOL (70% of 10)
+  exponent: 1050,             // 1.05 × 1000
+  maxBase: 13_500_000_000n,   // 13.5 SOL (135% of 10)
   maxQuote: 0n,
-  side: 1,                    // Ask
+  side: 'ask',
 });
 ```
 
-<Note>
-**Parameter scaling**: On-chain, exponent and curveShift are i32 scaled by 1000. So gamma 1.5 → 1500, curveShift -0.2 → -200.
-</Note>
-
 ---
 
-## Parameter Reference
+## On-Chain Parameter Reference
 
-| Parameter | On-Chain Type | Scale | Range | Description |
-|-----------|---------------|-------|-------|-------------|
-| `exponent` | `i32` | ×1000 | -5000 to +5000 | Gamma/curve shape |
-| `curve_shift` | `i32` | ×1000 | -1000 to +1000 | Horizontal shift within range |
-| `p_min` | `u64` | Native | - | Lower price bound |
-| `p_max` | `u64` | Native | - | Upper price bound |
-| `amount` | `u64` | Native | - | Liquidity amount |
+| Parameter | Type | Scale | Description |
+|-----------|------|-------|-------------|
+| `p_min` | `u64` | Native | Lower price bound |
+| `p_max` | `u64` | Native | Upper price bound |
+| `exponent` | `i32` | ×1000 | Gamma/curve shape (-5000 to +5000) |
+| `amount` | `u64` | Native | Liquidity amount |
+
+<Note>
+The `exponent` parameter is signed and scaled by 1000. So gamma -2.5 becomes -2500 on-chain, and gamma +1.5 becomes +1500.
+</Note>
 
 ---
 
@@ -278,18 +342,30 @@ const askOrder = await market.placeClmmPosition({
 
 <CardGroup cols={2}>
   <Card title="Start Neutral" icon="scale-balanced">
-    Begin with skew=0 and adjust based on inventory. Don't over-correct.
+    Begin with skew=0 and adjust incrementally based on inventory. Over-correcting causes oscillation.
   </Card>
   <Card title="Widen in Volatility" icon="chart-line">
-    Increase spread and range when volatility spikes. Protect against adverse selection.
+    When volatility spikes, increase spread first, then range. Protect against adverse selection before worrying about fill rate.
   </Card>
-  <Card title="Match Gamma to Vol" icon="sliders">
-    Low vol → negative gamma (front-load). High vol → positive gamma (back-load).
+  <Card title="Match Gamma to Conditions" icon="sliders">
+    Low vol → negative gamma (capture frequent small moves). High vol → positive gamma (only trade significant moves).
   </Card>
-  <Card title="Watch the Computed Values" icon="calculator">
-    The panel below the chart shows your actual per-side gamma and depth. Verify before submitting.
+  <Card title="Size to Survive" icon="shield">
+    Your depth should let you survive a 3-sigma move without liquidation. Better to be small and survive than big and blown up.
   </Card>
 </CardGroup>
+
+---
+
+## Common Mistakes
+
+| Mistake | Why It Hurts | Fix |
+|---------|--------------|-----|
+| Spread too tight in volatile markets | Get picked off by informed flow | Widen spread when vol increases |
+| Negative gamma in trending markets | Repeated wrong-side fills | Use zero or positive gamma |
+| Over-skewing | Whipsaw as inventory oscillates | Adjust skew gradually (±0.1 increments) |
+| Range too narrow without monitoring | Go out of range, stop earning | Either widen range or automate repositioning |
+| Ignoring correlation | Position amplifies other exposures | Consider portfolio-level risk |
 
 ---
 
@@ -297,9 +373,9 @@ const askOrder = await market.placeClmmPosition({
 
 <CardGroup cols={2}>
   <Card title="CLMM Orders" icon="water" href="/orders/clmm-orders">
-    Deep dive into concentrated liquidity positions
+    Deep dive into concentrated liquidity mechanics
   </Card>
   <Card title="Order Types" icon="list" href="/concepts/order-types">
-    Compare Limit, CLMM, and PropAMM for your strategy
+    Compare Limit, CLMM, and PropAMM strategies
   </Card>
 </CardGroup>

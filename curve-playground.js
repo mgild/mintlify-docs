@@ -340,10 +340,210 @@
     drawChart();
   }
 
-  // Check periodically for the container
+  // Mini gamma demo for the explanation section
+  function initGammaDemo() {
+    const container = document.getElementById('gamma-demo');
+    if (!container) return;
+    if (container.querySelector('canvas')) return;
+
+    container.innerHTML = `
+      <div style="margin: 20px 0; padding: 20px; background: #0a0a0a; border-radius: 12px; border: 1px solid #222;">
+        <div style="display: flex; gap: 10px; margin-bottom: 15px; justify-content: center;">
+          <button id="gd-neg" style="padding: 8px 16px; background: #1a1a1a; border: 2px solid #5d8bbb; color: #5d8bbb; border-radius: 6px; cursor: pointer; font-family: monospace; font-weight: bold;">Negative (-2.0)</button>
+          <button id="gd-zero" style="padding: 8px 16px; background: #1a1a1a; border: 2px solid #333; color: #888; border-radius: 6px; cursor: pointer; font-family: monospace;">Zero (0.0)</button>
+          <button id="gd-pos" style="padding: 8px 16px; background: #1a1a1a; border: 2px solid #333; color: #888; border-radius: 6px; cursor: pointer; font-family: monospace;">Positive (+2.0)</button>
+        </div>
+        <canvas id="gd-canvas" width="600" height="200" style="background: #111; border-radius: 8px; width: 100%;"></canvas>
+        <div id="gd-label" style="text-align: center; margin-top: 12px; font-family: monospace; font-size: 13px; color: #5d8bbb;">
+          Front-loaded: More liquidity near the spread edge
+        </div>
+      </div>
+    `;
+
+    const canvas = document.getElementById('gd-canvas');
+    const ctx = canvas.getContext('2d');
+    const label = document.getElementById('gd-label');
+    const btnNeg = document.getElementById('gd-neg');
+    const btnZero = document.getElementById('gd-zero');
+    const btnPos = document.getElementById('gd-pos');
+
+    let currentGamma = -2.0;
+
+    function setActiveButton(active) {
+      [btnNeg, btnZero, btnPos].forEach(btn => {
+        btn.style.borderColor = '#333';
+        btn.style.color = '#888';
+        btn.style.fontWeight = 'normal';
+      });
+      active.style.borderColor = '#5d8bbb';
+      active.style.color = '#5d8bbb';
+      active.style.fontWeight = 'bold';
+    }
+
+    function drawGammaDemo(gamma) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const midX = canvas.width / 2;
+      const spreadPx = 30;
+      const rangePx = 200;
+
+      // Grid
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i <= 12; i++) {
+        ctx.moveTo(i * 50, 0);
+        ctx.lineTo(i * 50, 200);
+      }
+      for (let i = 0; i <= 4; i++) {
+        ctx.moveTo(0, i * 50);
+        ctx.lineTo(600, i * 50);
+      }
+      ctx.stroke();
+
+      // Spread zone
+      ctx.fillStyle = 'rgba(50, 50, 50, 0.3)';
+      ctx.fillRect(midX - spreadPx, 0, spreadPx * 2, 200);
+
+      // Mid line
+      ctx.strokeStyle = '#444';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(midX, 0);
+      ctx.lineTo(midX, 200);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      function calcRawY(normalizedX, g) {
+        if (Math.abs(g) < 0.01) return 1.0;
+        const power = Math.pow(2, Math.abs(g));
+        const curved = Math.pow(normalizedX, power);
+        const blend = 1 - Math.exp(-Math.abs(g) * 3);
+        if (g >= 0) {
+          return (1 - blend) + curved * blend;
+        } else {
+          return (1 - blend) + (1 - curved) * blend;
+        }
+      }
+
+      function calcNormFactor(g) {
+        const steps = 100;
+        let sum = 0;
+        for (let i = 0; i <= steps; i++) {
+          sum += calcRawY(i / steps, g);
+        }
+        return steps / sum;
+      }
+
+      const normFactor = calcNormFactor(gamma);
+
+      function calcY(normalizedX) {
+        const raw = calcRawY(normalizedX, gamma);
+        return raw * normFactor * 0.5;
+      }
+
+      // Draw single curve (showing one side for clarity)
+      const curveStart = midX + spreadPx;
+      const curveEnd = midX + spreadPx + rangePx;
+      const curveWidth = curveEnd - curveStart;
+
+      // Fill
+      ctx.fillStyle = 'rgba(93, 139, 187, 0.2)';
+      ctx.beginPath();
+      ctx.moveTo(curveStart, 200);
+      for (let x = curveStart; x <= curveEnd; x++) {
+        const normalizedX = (x - curveStart) / curveWidth;
+        const y = calcY(normalizedX);
+        ctx.lineTo(x, 200 - y * 180);
+      }
+      ctx.lineTo(curveEnd, 200);
+      ctx.closePath();
+      ctx.fill();
+
+      // Stroke
+      ctx.strokeStyle = 'rgba(93, 139, 187, 0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let x = curveStart; x <= curveEnd; x++) {
+        const normalizedX = (x - curveStart) / curveWidth;
+        const y = calcY(normalizedX);
+        if (x === curveStart) {
+          ctx.moveTo(x, 200 - y * 180);
+        } else {
+          ctx.lineTo(x, 200 - y * 180);
+        }
+      }
+      ctx.stroke();
+
+      // Mirror for bid side
+      const bidStart = midX - spreadPx - rangePx;
+      const bidEnd = midX - spreadPx;
+      const bidWidth = bidEnd - bidStart;
+
+      ctx.fillStyle = 'rgba(93, 139, 187, 0.2)';
+      ctx.beginPath();
+      ctx.moveTo(bidStart, 200);
+      for (let x = bidStart; x <= bidEnd; x++) {
+        const normalizedX = (bidEnd - x) / bidWidth;
+        const y = calcY(normalizedX);
+        ctx.lineTo(x, 200 - y * 180);
+      }
+      ctx.lineTo(bidEnd, 200);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(93, 139, 187, 0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let x = bidStart; x <= bidEnd; x++) {
+        const normalizedX = (bidEnd - x) / bidWidth;
+        const y = calcY(normalizedX);
+        if (x === bidStart) {
+          ctx.moveTo(x, 200 - y * 180);
+        } else {
+          ctx.lineTo(x, 200 - y * 180);
+        }
+      }
+      ctx.stroke();
+
+      // Labels
+      ctx.font = '11px monospace';
+      ctx.fillStyle = '#666';
+      ctx.fillText('spread', midX - 20, 15);
+      ctx.fillText('edge', bidStart + 5, 15);
+      ctx.fillText('edge', curveEnd - 30, 15);
+    }
+
+    btnNeg.addEventListener('click', () => {
+      currentGamma = -2.0;
+      setActiveButton(btnNeg);
+      label.textContent = 'Front-loaded: More liquidity near the spread edge';
+      drawGammaDemo(currentGamma);
+    });
+
+    btnZero.addEventListener('click', () => {
+      currentGamma = 0.0;
+      setActiveButton(btnZero);
+      label.textContent = 'Uniform: Equal liquidity across the entire range';
+      drawGammaDemo(currentGamma);
+    });
+
+    btnPos.addEventListener('click', () => {
+      currentGamma = 2.0;
+      setActiveButton(btnPos);
+      label.textContent = 'Back-loaded: More liquidity at the range edges';
+      drawGammaDemo(currentGamma);
+    });
+
+    drawGammaDemo(currentGamma);
+  }
+
+  // Check periodically for the containers
   function checkInit() {
     if (window.location.pathname.includes('curve-playground')) {
       init();
+      initGammaDemo();
     }
   }
 
