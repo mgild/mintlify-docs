@@ -13,8 +13,8 @@
             <input type="range" id="pg-spread" min="5" max="500" value="50" style="width: 100%;">
           </div>
           <div style="flex: 1; min-width: 140px;">
-            <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Range: <span id="pg-range-val">5.0</span>%</label>
-            <input type="range" id="pg-range" min="10" max="200" value="50" style="width: 100%;">
+            <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Range: <span id="pg-range-val">50.0</span>%</label>
+            <input type="range" id="pg-range" min="10" max="500" value="500" style="width: 100%;">
           </div>
           <div style="flex: 1; min-width: 140px;">
             <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Gamma: <span id="pg-gamma-val">1.50</span></label>
