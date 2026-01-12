@@ -321,11 +321,6 @@
             <div style="${rightCellStyle}">${bidExponent}</div>
             <div style="${rightCellStyle}">${askExponent}</div>
           </div>
-          <div style="${rowStyle} color: #ccc;">
-            <div style="${cellStyle}">curve_shift <span style="color: #666;">(×1000)</span></div>
-            <div style="${rightCellStyle}">0</div>
-            <div style="${rightCellStyle}">0</div>
-          </div>
           <div style="display: grid; grid-template-columns: 40% 30% 30%; color: #ccc;">
             <div style="${cellStyle}">amount <span style="color: #666;">(multiplier)</span></div>
             <div style="${rightCellStyle}">${bidDepthMult.toFixed(2)}×</div>
