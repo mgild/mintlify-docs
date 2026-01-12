@@ -1,35 +1,19 @@
-// Inject hero logo on introduction page
+// Exponent chart widget for introduction page
 (function() {
   let currentColor = '#5d8bbb';
 
-  function injectLogo() {
+  function cleanupWidgets() {
     const path = window.location.pathname;
     const isIntroPage = path === '/' || path === '/introduction' || path === '/introduction/';
 
     if (!isIntroPage || window.location.pathname.includes('density-orders')) {
-      const existing = document.querySelector('.hero-logo');
-      if (existing) existing.remove();
       const picker = document.querySelector('.color-picker-container');
       if (picker) picker.remove();
       const chart = document.querySelector('.exponent-chart');
       if (chart) chart.remove();
       const restore = document.querySelector('.exponent-chart-restore');
       if (restore) restore.remove();
-      return;
     }
-
-    if (document.querySelector('.hero-logo')) return;
-
-    const container = document.querySelector('[class*="prose"]');
-    if (!container) return;
-
-    const logo = document.createElement('img');
-    logo.src = '/logo/main.svg';
-    logo.alt = 'Braid Protocol';
-    logo.className = 'hero-logo';
-    logo.style.cssText = 'display: block; width: 100%; margin: 0 auto 2rem; transform: scale(1.5); transform-origin: center;';
-
-    container.insertBefore(logo, container.firstChild);
   }
 
   // Color picker - only shown when colorSelect() is called
@@ -236,7 +220,7 @@
 
   function tryInject() {
     setTimeout(() => {
-      injectLogo();
+      cleanupWidgets();
       createExponentChart();
     }, 300);
   }
@@ -264,15 +248,5 @@
       tryInject();
     }
   });
-
-  function startObserver() {
-    if (document.body) {
-      observer.observe(document.body, { childList: true, subtree: true });
-    } else {
-      document.addEventListener('DOMContentLoaded', () => {
-        observer.observe(document.body, { childList: true, subtree: true });
-      });
-    }
-  }
-  startObserver();
+  observer.observe(document.body, { childList: true, subtree: true });
 })();
