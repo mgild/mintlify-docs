@@ -264,5 +264,15 @@
       tryInject();
     }
   });
-  observer.observe(document.body, { childList: true, subtree: true });
+
+  function startObserver() {
+    if (document.body) {
+      observer.observe(document.body, { childList: true, subtree: true });
+    } else {
+      document.addEventListener('DOMContentLoaded', () => {
+        observer.observe(document.body, { childList: true, subtree: true });
+      });
+    }
+  }
+  startObserver();
 })();
