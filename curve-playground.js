@@ -32,6 +32,7 @@
           <span>Ask Range</span>
         </div>
         <div id="pg-params" style="display: flex; justify-content: space-between; max-width: 800px; margin-top: 15px; font-family: monospace; font-size: 11px;"></div>
+        <div id="pg-program-params" style="width: 100%; max-width: 800px; margin-top: 20px;"></div>
       </div>
     `;
 
@@ -48,13 +49,13 @@
       const spreadBps = parseInt(spreadSlider.value);
       const rangePct = parseInt(rangeSlider.value) / 10;
       const gamma = parseInt(gammaSlider.value) / 10;
-      const skew = parseInt(skewSlider.value) / 100;
+      const skew = -parseInt(skewSlider.value) / 100;
 
       // Update labels
       document.getElementById('pg-spread-val').textContent = spreadBps;
       document.getElementById('pg-range-val').textContent = rangePct.toFixed(1);
       document.getElementById('pg-gamma-val').textContent = gamma.toFixed(2);
-      document.getElementById('pg-skew-val').textContent = skew.toFixed(2);
+      document.getElementById('pg-skew-val').textContent = (parseInt(skewSlider.value) / 100).toFixed(2);
 
       // Calculate per-side parameters based on skew
       // Negative skew = long, want to sell = more aggressive ask
@@ -91,19 +92,33 @@
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Calculate pixel positions
+      // Calculate pixel positions (original scaling)
       // Spread defines the gap from mid to where each curve starts
       // Range defines how wide each curve extends beyond the spread
-      const spreadPx = (spreadBps / 10000) * midX * 4; // Scale for visibility
-      const rangePx = (rangePct / 100) * midX * 2;
+      let spreadPx = (spreadBps / 10000) * midX * 4; // Scale for visibility
+      let rangePx = (rangePct / 100) * midX * 2;
 
-      // Bid curve: from (mid - spread - range) to (mid - spread)
-      const bidStart = midX - spreadPx - rangePx;
-      const bidEnd = midX - spreadPx;
+      // Check if curves would overflow canvas
+      let bidStart = midX - spreadPx - rangePx;
+      let bidEnd = midX - spreadPx;
+      let askStart = midX + spreadPx;
+      let askEnd = midX + spreadPx + rangePx;
 
-      // Ask curve: from (mid + spread) to (mid + spread + range)
-      const askStart = midX + spreadPx;
-      const askEnd = midX + spreadPx + rangePx;
+      // If overflow, scale down to fit
+      const margin = 10;
+      if (bidStart < margin || askEnd > canvas.width - margin) {
+        const maxExtentPx = Math.max(midX - bidStart, askEnd - midX);
+        const availableWidth = midX - margin;
+        const scaleFactor = availableWidth / maxExtentPx;
+
+        spreadPx *= scaleFactor;
+        rangePx *= scaleFactor;
+
+        bidStart = midX - spreadPx - rangePx;
+        bidEnd = midX - spreadPx;
+        askStart = midX + spreadPx;
+        askEnd = midX + spreadPx + rangePx;
+      }
 
       // Draw spread zone (gray area in middle)
       ctx.fillStyle = 'rgba(50, 50, 50, 0.3)';
@@ -255,6 +270,65 @@
           <div style="margin-bottom: 4px; color: #888;">Ask Order</div>
           <div>gamma: ${askGamma.toFixed(2)}</div>
           <div>depth: ${(askDepthMult * 100).toFixed(0)}%</div>
+        </div>
+      `;
+
+      // Calculate on-chain program parameters
+      // Using $100 as reference mid price (100_000_000 in 6 decimal places)
+      const midPrice = 100_000_000;
+      const spreadMult = spreadBps / 10000;
+      const rangeMult = rangePct / 100;
+
+      // Bid order: below mid price
+      const bidPMax = Math.round(midPrice * (1 - spreadMult));
+      const bidPMin = Math.round(midPrice * (1 - spreadMult - rangeMult));
+      const bidExponent = Math.round(bidGamma * 1000);
+
+      // Ask order: above mid price
+      const askPMin = Math.round(midPrice * (1 + spreadMult));
+      const askPMax = Math.round(midPrice * (1 + spreadMult + rangeMult));
+      const askExponent = Math.round(askGamma * 1000);
+
+      const programParamsDiv = document.getElementById('pg-program-params');
+      programParamsDiv.innerHTML = `
+        <table style="width: 100%; table-layout: fixed; border-collapse: collapse; font-family: monospace; font-size: 12px; background: #1a1a1a; border-radius: 8px; overflow: hidden;">
+          <thead>
+            <tr style="background: #252525; color: #888;">
+              <th style="width: 40%; padding: 10px; text-align: left; border-bottom: 1px solid #333;">Parameter</th>
+              <th style="width: 30%; padding: 10px; text-align: right; border-bottom: 1px solid #333; color: #22c55e;">Bid Order</th>
+              <th style="width: 30%; padding: 10px; text-align: right; border-bottom: 1px solid #333; color: #ef4444;">Ask Order</th>
+            </tr>
+          </thead>
+          <tbody style="color: #ccc;">
+            <tr>
+              <td style="padding: 8px 10px; border-bottom: 1px solid #2a2a2a;">p_min</td>
+              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">${bidPMin.toLocaleString()}</td>
+              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">${askPMin.toLocaleString()}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 10px; border-bottom: 1px solid #2a2a2a;">p_max</td>
+              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">${bidPMax.toLocaleString()}</td>
+              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">${askPMax.toLocaleString()}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 10px; border-bottom: 1px solid #2a2a2a;">exponent <span style="color: #666;">(×1000)</span></td>
+              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">${bidExponent}</td>
+              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">${askExponent}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 10px; border-bottom: 1px solid #2a2a2a;">curve_shift <span style="color: #666;">(×1000)</span></td>
+              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">0</td>
+              <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #2a2a2a;">0</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 10px;">amount <span style="color: #666;">(multiplier)</span></td>
+              <td style="padding: 8px 10px; text-align: right;">${bidDepthMult.toFixed(2)}×</td>
+              <td style="padding: 8px 10px; text-align: right;">${askDepthMult.toFixed(2)}×</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="margin-top: 8px; font-size: 11px; color: #666; font-family: monospace;">
+          Reference: mid_price = ${midPrice.toLocaleString()} ($100.00)
         </div>
       `;
     }
