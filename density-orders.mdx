@@ -123,19 +123,17 @@ Skew is your primary tool for **managing inventory risk**. As you accumulate a p
 
 **The core principle:** Skew is inversely related to your inventory position.
 
-| Your Position | Skew | What Happens |
-|---------------|------|--------------|
-| **Long** (holding too much) | Negative (-) | Ask becomes more aggressive → you sell faster |
+| Your Position | Skew | Effect |
+|---------------|------|--------|
+| **Long** (holding too much) | Negative (-) | More depth + amplified gamma on asks |
 | **Neutral** (balanced) | Zero (0) | Symmetric bid and ask |
-| **Short** (need to buy) | Positive (+) | Bid becomes more aggressive → you buy faster |
+| **Short** (need to buy) | Positive (+) | More depth + amplified gamma on bids |
 
-**Why it works:**
+**How skew affects your orders:**
 
-When you're long, you have **inventory risk** — if price drops, you lose money. You want to reduce that inventory, so you make your ask more attractive:
-- More depth on the ask side (more size available to sell)
-- Steeper gamma on the ask side (more liquidity near the spread)
-
-The opposite applies when you're short.
+Skew does two things:
+1. **Redistributes depth** — more size on the side you want fills
+2. **Amplifies gamma** — intensifies your chosen curve shape on that side
 
 **The formulas:**
 ```
@@ -146,11 +144,29 @@ askDepth = baseDepth × (1 - skew)
 bidDepth = baseDepth × (1 + skew)
 ```
 
+**Important:** Skew amplifies gamma magnitude, it doesn't change the direction. The effect depends on your base gamma:
+
+| Base Gamma | With Negative Skew (Long) | Strategy |
+|------------|---------------------------|----------|
+| **Negative** (front-loaded) | Asks become *more* front-loaded | Defensive: sell quickly at current prices |
+| **Zero** (uniform) | No shape change, only depth | Neutral: let depth do the work |
+| **Positive** (back-loaded) | Asks become *more* back-loaded | Opportunistic: sell only on up-moves |
+
 **Example with skew = -0.4 (you're long):**
-- Ask gamma: base × 1.4 (steeper, more aggressive)
-- Ask depth: base × 1.4 (40% more size)
-- Bid gamma: base × 0.6 (flatter, more passive)
-- Bid depth: base × 0.6 (40% less size)
+- Ask depth: base × 1.4 (40% more size to sell)
+- Bid depth: base × 0.6 (40% less size to buy)
+- Ask gamma: base × 1.4 (amplified shape)
+- Bid gamma: base × 0.6 (dampened shape)
+
+**Choosing your strategy:**
+
+When you're long and want to reduce inventory, combine gamma + skew:
+
+| Goal | Gamma | Skew | Result |
+|------|-------|------|--------|
+| Sell fast at current prices | Negative | Negative | Front-loaded asks with more depth |
+| Sell only on significant up-moves | Positive | Negative | Back-loaded asks with more depth |
+| Balanced approach | Zero | Negative | Uniform asks with more depth |
 
 **In Braid:** Skew is applied at the SDK level. On-chain, you submit separate bid and ask orders with their computed gamma and amount values.
 
@@ -217,18 +233,33 @@ Your total capital deployed stays roughly constant; skew just redistributes it b
 
 ---
 
-### Example 2: Inventory Rebalancing
+### Example 2: Opportunistic Inventory Reduction
 
-*"I'm long 500 SOL and need to reduce exposure without panic selling."*
+*"I'm long 500 SOL and want to sell on up-moves, not panic at current prices."*
 
 | Parameter | Value | Reasoning |
 |-----------|-------|-----------|
 | Spread | 25 bps | Stay competitive |
 | Range | 8% | Moderate coverage |
-| Gamma | 1.5 | Back-load slightly — not desperate |
-| Skew | -0.4 | Long, so make asks aggressive |
+| Gamma | +1.5 | Back-loaded — sell into strength |
+| Skew | -0.4 | Long position, favor asks |
 
-**Result:** Ask side has 40% more depth and gamma of 2.1 (vs bid's 0.9). You'll sell faster while still maintaining a bid in case price drops.
+**Result:** Ask side has 40% more depth and gamma of 2.1 (more back-loaded), bid has gamma 0.9 (closer to uniform). You're positioned to sell if price rallies while maintaining a passive bid. This is an *opportunistic* strategy — you're not desperate to exit.
+
+---
+
+### Example 2b: Defensive Inventory Reduction
+
+*"I'm long 500 SOL and need to reduce exposure quickly."*
+
+| Parameter | Value | Reasoning |
+|-----------|-------|-----------|
+| Spread | 20 bps | Tighter to attract flow |
+| Range | 5% | Focused near current price |
+| Gamma | -1.5 | Front-loaded — sell at current prices |
+| Skew | -0.4 | Long position, favor asks |
+
+**Result:** Ask side has 40% more depth and gamma of -2.1 (heavily front-loaded near spread), bid has gamma -0.9 (less concentrated). You'll get filled quickly on your asks at prices near the current level. This is a *defensive* strategy — you want out.
 
 ---
 
@@ -287,15 +318,16 @@ const orders = await market.placeMMOrders({
   midPrice: 150_000_000n,     // $150 reference
   spreadBps: 30,              // 30 bps each side
   rangeWidth: 0.05,           // 5% range beyond spread
-  gamma: 1.5,                 // Base curve shape
-  skew: -0.3,                 // Long, want to sell
+  gamma: 1.5,                 // Base curve shape (positive = back-loaded)
+  skew: -0.3,                 // Long position, favor asks
   maxBase: 10_000_000_000n,   // 10 SOL total
   maxQuote: 1_500_000_000n,   // 1500 USDC total
 });
 
 // This creates TWO orders:
-// BID: gamma=1.95, depth=65% of base
-// ASK: gamma=1.05, depth=135% of base
+// BID: gamma = 1.5 × (1 + -0.3) = 1.05, depth = 70% of base
+// ASK: gamma = 1.5 × (1 - -0.3) = 1.95, depth = 130% of base
+// Note: asks are MORE back-loaded (sell into rallies), not front-loaded
 ```
 
 ### Low-Level SDK (Direct Control)
@@ -305,8 +337,8 @@ const orders = await market.placeMMOrders({
 const bidOrder = await market.placeClmmPosition({
   pMin: 142_500_000n,         // $142.50
   pMax: 149_550_000n,         // $149.55 (spread edge)
-  exponent: 1950,             // 1.95 × 1000
-  maxBase: 6_500_000_000n,    // 6.5 SOL (65% of 10)
+  exponent: 1050,             // 1.05 × 1000 (dampened)
+  maxBase: 7_000_000_000n,    // 7 SOL (70% of 10)
   maxQuote: 0n,
   side: 'bid',
 });
@@ -314,8 +346,8 @@ const bidOrder = await market.placeClmmPosition({
 const askOrder = await market.placeClmmPosition({
   pMin: 150_450_000n,         // $150.45 (spread edge)
   pMax: 157_500_000n,         // $157.50
-  exponent: 1050,             // 1.05 × 1000
-  maxBase: 13_500_000_000n,   // 13.5 SOL (135% of 10)
+  exponent: 1950,             // 1.95 × 1000 (amplified)
+  maxBase: 13_000_000_000n,   // 13 SOL (130% of 10)
   maxQuote: 0n,
   side: 'ask',
 });
@@ -353,6 +385,12 @@ The `exponent` parameter is signed and scaled by 1000. So gamma -2.5 becomes -25
   <Card title="Size to Survive" icon="shield">
     Your depth should let you survive a 3-sigma move without liquidation. Better to be small and survive than big and blown up.
   </Card>
+  <Card title="Gamma + Skew Strategy" icon="diagram-project">
+    Skew amplifies your gamma choice. Negative gamma + skew = defensive (exit fast). Positive gamma + skew = opportunistic (exit into favorable moves).
+  </Card>
+  <Card title="Depth Drives Fill Rate" icon="layer-group">
+    When reducing inventory, depth matters more than gamma shape. More size at any shape means more fills.
+  </Card>
 </CardGroup>
 
 ---
@@ -366,6 +404,7 @@ The `exponent` parameter is signed and scaled by 1000. So gamma -2.5 becomes -25
 | Over-skewing | Whipsaw as inventory oscillates | Adjust skew gradually (±0.1 increments) |
 | Range too narrow without monitoring | Go out of range, stop earning | Either widen range or automate repositioning |
 | Ignoring correlation | Position amplifies other exposures | Consider portfolio-level risk |
+| Wrong gamma for exit strategy | Positive gamma + skew won't fill fast | Use negative gamma if you need to exit quickly |
 
 ---
 
