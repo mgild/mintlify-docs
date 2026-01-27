@@ -322,10 +322,10 @@ fn power_exp(t_scaled: u64, exponent: u32) -> u64 {
 
 ### Integer Square Root
 
-For the common n=2 case (concentrated liquidity), Braid uses Newton's method:
+For the common n=2 case (concentrated liquidity), Braid uses iterative approximation:
 
 ```rust
-/// Integer square root via Newton-Raphson
+/// Integer square root
 fn isqrt(n: u64) -> u64 {
     if n == 0 { return 0; }
 
@@ -471,7 +471,7 @@ The average price is the integral of the price curve from 0 to f, divided by f. 
 
 <CardGroup cols={2}>
   <Card title="Matching Engine" icon="gears" href="/concepts/matching-engine">
-    How order curves are matched using Newton-Raphson optimization
+    How order curves are matched to find optimal prices
   </Card>
   <Card title="CLMM Orders" icon="chart-area" href="/orders/clmm-orders">
     Deep dive into concentrated liquidity positions

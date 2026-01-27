@@ -64,7 +64,7 @@ Very small order amounts that are economically insignificant. The matching engin
 ## E
 
 ### Equilibrium Price
-The price at which total supply equals total demand in the matching engine. Found using Newton-Raphson optimization.
+The price at which total supply equals total demand. The Braid matching engine finds this optimal price across all liquidity sources.
 
 ### Exponent (n)
 The power in the order curve density function. Controls the shape of liquidity distribution:
@@ -136,7 +136,7 @@ The instantaneous price at the current fill level. As you fill more, the margina
 A Solana account storing configuration for a trading pair. Contains fee settings, shard pointers, and CP-AMM reserves.
 
 ### Matching Engine
-The core algorithm that finds optimal prices and fills orders. Uses Newton-Raphson optimization.
+The core algorithm that finds optimal prices and fills orders across all liquidity sources simultaneously.
 
 ### MEV (Maximal Extractable Value)
 Value extracted by reordering, inserting, or censoring transactions. Includes front-running, sandwich attacks, and JIT liquidity.
@@ -150,9 +150,6 @@ Minimum acceptable output amount. If the swap would produce less, the transactio
 ---
 
 ## N
-
-### Newton-Raphson
-An iterative algorithm for finding roots of equations. Braid uses it to find the equilibrium price across multiple order curves in ~3 iterations.
 
 ---
 
@@ -262,7 +259,7 @@ A token account owned by the market PDA that holds deposited tokens. Each market
 ## W
 
 ### Weighted Average
-A method of calculating a representative value where each component contributes proportionally to its weight. Used for initial price guess in Newton-Raphson.
+A method of calculating a representative value where each component contributes proportionally to its weight. Used by the matching engine for initial price estimation.
 
 ---
 

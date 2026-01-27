@@ -427,23 +427,21 @@ fn is_better_price(a: u64, b: u64, side: Side) -> bool {
 
 ---
 
-## Newton-Raphson Optimal Matching
+## Optimal Price Discovery
 
-Braid's matching engine uses the Newton-Raphson algorithm to find the **optimal equilibrium price** that maximizes output across all liquidity sources simultaneously.
+The Braid matching engine finds the **optimal equilibrium price** that maximizes output across all liquidity sources simultaneously.
 
 <Note>
-**Why Newton-Raphson?** Simple greedy matching (fill best price first) can miss opportunities where splitting across multiple orders gives better total output. Newton-Raphson finds the mathematically optimal allocation.
+Simple greedy matching (fill best price first) can miss opportunities where splitting across multiple orders gives better total output. Braid's matching engine finds the mathematically optimal allocation.
 </Note>
 
 ### The Optimization Problem
 
-Given input amount `I` and a set of order curves, find the equilibrium price `P*` such that:
+Given input amount `I` and a set of order curves, the engine finds the equilibrium price `P*` where total supply equals total demand:
 
 $$
 \sum_{i} f_i(P^*) = I
 $$
-
-Where `f_i(P*)` is the fill amount for order i at price P*.
 
 ```
 Example: Two overlapping CLMM orders
@@ -460,92 +458,11 @@ Greedy approach:
 Optimal approach:
   Find P* where filling both orders proportionally
   gives better average price than greedy
-
-The Newton-Raphson algorithm finds P* in ~3 iterations.
-```
-
-### The Algorithm
-
-Newton-Raphson iteratively refines a price guess until it converges:
-
-```rust
-/// Find equilibrium price using Newton-Raphson
-fn find_equilibrium_price(
-    orders: &[OrderCurve],
-    target_input: u64,
-) -> u64 {
-    // Initial guess: weighted average of order prices
-    let mut price = weighted_average_price(orders);
-
-    for _ in 0..MAX_NEWTON_ITERS {
-        // Calculate total fill at current price
-        let total_fill = orders.iter()
-            .map(|o| o.fill_to_price(price))
-            .sum::<u64>();
-
-        // Calculate slope (derivative of fill w.r.t. price)
-        let total_slope = orders.iter()
-            .map(|o| o.slope_at_price(price))
-            .sum::<u64>();
-
-        // Newton step: price_new = price - f(price) / f'(price)
-        let error = total_fill as i128 - target_input as i128;
-        let adjustment = error * SLOPE_SCALE as i128 / total_slope as i128;
-
-        let new_price = (price as i128 - adjustment) as u64;
-
-        // Check convergence
-        if (new_price as i128 - price as i128).abs() <= NEWTON_EPSILON {
-            return new_price;
-        }
-
-        price = new_price;
-    }
-
-    price
-}
-```
-
-### Key Constants
-
-```rust
-const MAX_NEWTON_ITERS: u32 = 3;      // Sufficient for ~40 bips accuracy
-const NEWTON_EPSILON: u64 = 1;         // Convergence tolerance
-const SLOPE_SCALE: u64 = 1_000_000_000; // 1e9 for precision
-const MAX_ACTIVE_SET: usize = 512;     // Max orders per matching round
-```
-
-### Slope Calculation
-
-The slope of an order curve is the derivative of fill with respect to price:
-
-$$
-\frac{df}{dP} = \frac{L \cdot (n+1)}{P_{max} - P_{min}} \cdot t(P)^n
-$$
-
-For flat orders (limit orders), the slope is infinite at the limit price (step function), which the algorithm handles specially:
-
-```rust
-fn slope_at_price(&self, price: u64) -> u64 {
-    if self.is_flat() {
-        // Flat orders: infinite slope at limit price
-        // Return a very large value to dominate the sum
-        return u64::MAX / 1000;
-    }
-
-    // Power-law curve: calculate derivative
-    let t = self.normalized_position(price);
-    let range = self.p_max - self.p_min;
-
-    // slope = L * (n+1) / range * t^n
-    let t_power = power_exp(t, self.exponent);
-    self.liquidity * (self.exponent as u64 + 1) * t_power / range
-}
 ```
 
 ### Three-Phase Matching
 
-The complete matching algorithm has three phases:
+The matching algorithm has three phases:
 
 ```
 PHASE 1: COLLECT
@@ -556,18 +473,12 @@ Gather all qualifying orders into "active set"
   - Limit orders from loaded shards
   - CP-AMM modeled as single virtual order
 
-Active set size: up to MAX_ACTIVE_SET (512) orders
+Active set size: up to 512 orders
 
 
-PHASE 2: SOLVE (Newton-Raphson)
+PHASE 2: SOLVE
 ────────────────────────────────
-1. Compute initial price guess (weighted average)
-2. For each iteration (max 3):
-   a. Sum fills at current price
-   b. Sum slopes at current price
-   c. Compute Newton step
-   d. Check convergence (epsilon = 1)
-3. Return equilibrium price P*
+Find the equilibrium price P* that clears the market
 
 
 PHASE 3: EXECUTE
@@ -576,70 +487,8 @@ For each order in active set:
   1. Compute fill amount at P*
   2. Apply to order (reduce remaining, flip if CLMM)
   3. Accumulate fees and outputs
-  4. Update tree positions
 
 Transfer tokens between taker and vaults
-```
-
-### Convergence Visualization
-
-```
-Iteration 1:
-  Price guess: $151.00
-  Total fill: 45 SOL (need 50)
-  Slope: 2.3 SOL/$
-  Adjustment: +$2.17
-  New price: $153.17
-
-Iteration 2:
-  Price guess: $153.17
-  Total fill: 49.2 SOL (need 50)
-  Slope: 1.8 SOL/$
-  Adjustment: +$0.44
-  New price: $153.61
-
-Iteration 3:
-  Price guess: $153.61
-  Total fill: 49.98 SOL (need 50)
-  Converged! (error < epsilon)
-
-Final equilibrium price: $153.61
-```
-
-### Why 3 Iterations Suffice
-
-Newton-Raphson has quadratic convergence - each iteration doubles the number of accurate digits:
-
-| Iteration | Error (bips) | Accuracy |
-|-----------|-------------|----------|
-| 0 (guess) | ~1000 bips | ~10% |
-| 1 | ~100 bips | ~1% |
-| 2 | ~10 bips | ~0.1% |
-| 3 | &lt;1 bip | ~0.01% |
-
-For trading, &lt;1 bip error is more than sufficient - the fee spread is typically 10-30 bips.
-
-### Handling Edge Cases
-
-```rust
-// Edge case 1: Single flat order
-if active_set.len() == 1 && active_set[0].is_flat() {
-    // No optimization needed - fill at limit price
-    return active_set[0].limit_price;
-}
-
-// Edge case 2: All orders have same price
-if all_same_price(&active_set) {
-    // Pro-rata fill at common price
-    return active_set[0].price();
-}
-
-// Edge case 3: Input exceeds all liquidity
-let max_fill: u64 = active_set.iter().map(|o| o.remaining()).sum();
-if target > max_fill {
-    // Fill everything, return worst price
-    return active_set.iter().map(|o| o.worst_price()).max();
-}
 ```
 
 ---

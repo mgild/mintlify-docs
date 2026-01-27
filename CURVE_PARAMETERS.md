@@ -186,15 +186,15 @@ let params = PlaceLimitOrderParams {
 };
 ```
 
-## Newton-Raphson Compatibility
+## Matching Engine Compatibility
 
-Both negative exponents and curve shift are fully compatible with Newton-Raphson matching:
+Both negative exponents and curve shift are fully compatible with the Braid matching engine:
 
 1. **Monotonicity preserved**: Marginal prices still move in a consistent direction as orders fill
 2. **Invertible**: Given a target price P*, we can compute the required fill amount
 3. **Greedy optimality**: The exchange argument proof still holds
 
-The curve inversion for Newton-Raphson with negative exponents:
+The curve inversion for price solving with negative exponents:
 
 ```
 For target price P*:
