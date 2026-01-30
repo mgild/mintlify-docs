@@ -1,0 +1,151 @@
+# Fee Discount System
+
+The Braid Protocol implements a fee discount system to incentivize user engagement through promotional campaigns (Twitter giveaways, Discord activity, etc.) and referrals.
+
+## Overview
+
+- **Stackable discounts**: Up to 4 discount types, each providing 25% fee reduction
+- **Maximum discount**: 100% (all 4 types combined)
+- **Sliding window**: First claim starts a 7-day window; additional claims extend by 3 days
+- **One-time claims**: Each type can only be claimed once per window
+- **Admin-controlled**: Discount admin can grant discounts to any maker
+
+## Discount Types
+
+| Type | Bit Flag | Description |
+|------|----------|-------------|
+| Twitter | 0x01 | Granted for Twitter engagement campaigns |
+| Referral | 0x02 | Auto-granted when signing up with a referrer |
+| Discord | 0x04 | Granted for Discord community participation |
+| Horde | 0x08 | Granted for Horde NFT holders |
+
+## Account Layout
+
+The discount fields are stored in the `Maker` account:
+
+```rust
+pub discount_types_claimed: u8,      // Bitmap of claimed types
+pub _discount_padding: [u8; 6],       // Alignment padding
+pub discount_expires_slot: u64,       // Slot when window expires (0 = no window)
+pub referred_by: u64,                 // Referrer's maker_id
+pub referral_count: u64,              // Users this maker has referred
+```
+
+## Window Mechanics
+
+### First Claim
+When a maker claims their first discount type in a new window:
+- `discount_types_claimed |= type`
+- `discount_expires_slot = current_slot + DISCOUNT_WINDOW_SLOTS` (~7 days)
+
+### Additional Claims
+When claiming additional types within an active window:
+- `discount_types_claimed |= type`
+- `discount_expires_slot = min(current + EXTEND_SLOTS, current_slot + WINDOW_SLOTS)`
+- Extension is capped at 7 days from current time to prevent infinite extension
+
+### Window Expiration
+When `current_slot >= discount_expires_slot`:
+- `discount_types_claimed` is reset to 0
+- Types can be claimed again in a new window
+
+## Fee Calculation
+
+At swap time, the taker's discount is applied:
+
+```rust
+let discount_bps = taker_maker.get_discount_bps(current_slot);
+let discounted_fee = fee * (10000 - discount_bps) / 10000;
+```
+
+Each claimed type contributes 2500 bps (25%):
+- 1 type: 25% off (pay 75%)
+- 2 types: 50% off (pay 50%)
+- 3 types: 75% off (pay 25%)
+- 4 types: 100% off (free)
+
+## Instructions
+
+### SetMakerDiscount
+Admin instruction to grant discount types to a maker.
+
+**Accounts:**
+1. `protocol_state` (readonly) - For discount_admin verification
+2. `maker` (writable) - Maker to grant discount to
+3. `discount_admin` (signer) - Must match protocol_state.discount_admin
+
+**Params:**
+- `discount_type: u8` - Bitmask of types to grant (can grant multiple at once)
+
+### SetDiscountAdmin
+Admin instruction to change the discount admin address.
+
+**Accounts:**
+1. `protocol_state` (writable)
+2. `current_admin` (signer)
+3. `new_admin` (readonly)
+
+## SDK Usage
+
+### TypeScript
+
+```typescript
+import { Maker, DISCOUNT_TYPE_TWITTER, DISCOUNT_TYPE_DISCORD } from '@braid/solana-client';
+
+// Check discount status
+const makerData = await Maker.fetch(rpc, makerAddress);
+const currentSlot = await connection.getSlot();
+
+if (Maker.hasActiveDiscount(makerData.data, BigInt(currentSlot))) {
+  const discountBps = Maker.getDiscountBps(makerData.data, BigInt(currentSlot));
+  console.log(`Active discount: ${discountBps / 100}%`);
+  console.log(`Types: ${Maker.getActiveDiscountTypes(makerData.data, BigInt(currentSlot))}`);
+}
+
+// Apply discount to a fee
+const originalFee = 1000n;
+const discountedFee = Maker.applyFeeDiscount(makerData.data, originalFee, BigInt(currentSlot));
+```
+
+### Admin Script
+
+```bash
+# Grant Twitter discount (25%)
+npx tsx scripts/admin-set-discount.ts <maker-address> --type twitter
+
+# Grant multiple discounts (50%)
+npx tsx scripts/admin-set-discount.ts <maker-address> --type twitter --type discord
+
+# Grant all discounts (100%)
+npx tsx scripts/admin-set-discount.ts <maker-address> --type all
+
+# Change the discount admin
+npx tsx scripts/admin-set-discount-admin.ts <new-admin-address>
+```
+
+## Constants
+
+```rust
+// Discount per type (2500 bps = 25%)
+pub const DISCOUNT_BPS_PER_TYPE: u16 = 2500;
+
+// Initial window duration (~7 days at 400ms/slot)
+pub const DISCOUNT_WINDOW_SLOTS: u64 = 7 * 24 * 60 * 60 * 1000 / 400; // 1,512,000 slots
+
+// Extension per additional claim (~3 days)
+pub const DISCOUNT_EXTEND_SLOTS: u64 = 3 * 24 * 60 * 60 * 1000 / 400; // 648,000 slots
+```
+
+## Security Considerations
+
+1. **Admin-only grants**: Only the `discount_admin` can call `SetMakerDiscount`
+2. **Idempotent claims**: Claiming the same type twice in a window has no effect
+3. **Capped extension**: Window cannot extend beyond 7 days from current time
+4. **Fee calculation**: Discount is applied on-chain during swap execution
+
+## Integration with MarketSwap
+
+The `MarketSwap` instruction accepts an optional `taker_maker` account:
+- If provided and has active discount, fees are reduced
+- If not provided, full fees apply
+- UI should pass taker's maker PDA when executing swaps
